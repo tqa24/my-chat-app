@@ -5,7 +5,7 @@
         <span>{{ message.content }}</span>
       </div>
       <div class="message-meta">
-        {{ formatTime(message.created_at) }} - {{ message.status }} - {{ message.sender_id == currentUser.id? currentUser.username: userIdToName[message.sender_id]}}
+        {{ formatTime(message.created_at) }} - {{ message.status }} - {{ message.sender_id == currentUser?.id? currentUser.username: userIdToName[message.sender_id]}}
       </div>
     </div>
   </div>
@@ -33,8 +33,9 @@ export default {
     const messageClass = (message) => {
       return {
         'message': true,
-        'sent-message': message.sender_id === currentUser.value.id,
-        'received-message': message.sender_id !== currentUser.value.id,
+        // Use optional chaining (?.) to safely access currentUser.value.id
+        'sent-message': currentUser.value?.id === message.sender_id,
+        'received-message': currentUser.value?.id !== message.sender_id,
       };
     };
 

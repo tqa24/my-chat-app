@@ -1,5 +1,10 @@
 <template>
   <div class="chat-container">
+    <!-- Add this section for the profile -->
+    <div v-if="currentUser" class="profile-info">
+      Logged in as: <strong>{{ currentUser.username }}</strong>
+    </div>
+
     <div v-if="selectedUser">
       <h2>Chatting with {{ selectedUser.username }}</h2>
       <ChatMessages />
@@ -7,9 +12,11 @@
     </div>
     <div v-else>
       <h2>Select user to chat</h2>
+      <!-- Search input -->
+      <input v-model="searchQuery" placeholder="Search users..." />
       <div class="user-list">
         <div
-            v-for="user in usersOnline"
+            v-for="user in filteredUsers"
             :key="user.id"
             class="user-item"
             @click="startChat(user)"
@@ -50,6 +57,7 @@ export default {
     const selectedUser = ref(null); //Selected user to chat
     const usersOnline = computed(() => store.getters.getUsersOnline);
     const typingUsers = computed(() => store.getters.typingUsers);
+    const searchQuery = ref(""); // Add search query
 
     onMounted(async () => {
       if (currentUser.value) {
@@ -77,7 +85,7 @@ export default {
           status: 'offline', // Assume offline initially
         }));
         // Remove current user
-        const filteredUsers = users.filter(user => user.id !== currentUser.value.id);
+        const filteredUsers = users.filter(user => user.id !== currentUser.value?.id);
         store.dispatch('setUsersOnline', filteredUsers)
       }).catch(err => {
         console.error("Error", err)
@@ -86,7 +94,7 @@ export default {
 
     const connectWebSocket = () => {
       ws.value = new WebSocket(
-          `ws://localhost:8080/ws?userID=${currentUser.value.id}`
+          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`// Add ? here
       );
       store.commit("setWs", ws.value);
       ws.value.onopen = () => {
@@ -110,7 +118,7 @@ export default {
           }
           case "online_status": {
             // Update online users list
-            if (data.user_id !== currentUser.value.id) {
+            if (data.user_id !== currentUser.value?.id) {//Add ?
               //Find in user list
               const userIndex = usersOnline.value.findIndex(u => u.id === data.user_id)
               if(userIndex !== -1){
@@ -135,7 +143,7 @@ export default {
           }
           case "typing": {
             // Add typing user to the store (if it's not the current user)
-            if (data.sender_id !== currentUser.value.id) {
+            if (data.sender_id !== currentUser.value?.id) {//Add ?
               //Find sender from user online
               const sender = usersOnline.value.find(u => u.id === data.sender_id)
               if(sender){
@@ -145,8 +153,14 @@ export default {
             break;
           }
           case "stop_typing": {
-            // Remove typing user from the store
-            store.dispatch("removeTypingUser", data.sender_id);
+            // Remove typing user from the store and use username
+            if (data.sender_id !== currentUser.value?.id) {
+              //Find sender from user online
+              const sender = usersOnline.value.find(u => u.id === data.sender_id)
+              if(sender){
+                store.dispatch("removeTypingUser", sender.username);
+              }
+            }
             break;
           }
           case "read_message": {
@@ -170,13 +184,23 @@ export default {
     const fetchMessages = async () => {
       try {
         const response = await axios.get(
-            `http://localhost:8080/messages?user1=${currentUser.value.id}&user2=${selectedUser.value.id}`
+            `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}` // Add ? here
         );
         store.dispatch("setMessages", response.data);
       } catch (error) {
         console.error("Failed to fetch messages:", error);
       }
     };
+
+    // Computed property for filtered users
+    const filteredUsers = computed(() => {
+      if (!searchQuery.value) {
+        return usersOnline.value; // Return all users if no search query
+      }
+      return usersOnline.value.filter((user) =>
+          user.username.toLowerCase().includes(searchQuery.value.toLowerCase())
+      );
+    });
 
     return {
       currentUser,
@@ -187,6 +211,9 @@ export default {
       startChat,
       typingUsers,
       fetchMessages,
+      searchQuery, // Expose search query
+      filteredUsers, // Expose filtered users
+
     };
   },
 };
@@ -229,5 +256,11 @@ export default {
   font-style: italic;
   color: gray;
   margin-top: 5px;
+}
+/* Add styles for profile info */
+.profile-info {
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 10px;
 }
 </style>
