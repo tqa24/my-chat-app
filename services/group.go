@@ -7,6 +7,7 @@ import (
 	"log"
 	"my-chat-app/models"
 	"my-chat-app/repositories"
+	"my-chat-app/websockets"
 
 	"github.com/google/uuid"
 )
@@ -23,10 +24,11 @@ type GroupService interface {
 type groupService struct {
 	groupRepo repositories.GroupRepository
 	userRepo  repositories.UserRepository // Need UserRepository to get User by ID
+	hub       *websockets.Hub             // Inject the websocket hub
 }
 
-func NewGroupService(groupRepo repositories.GroupRepository, userRepo repositories.UserRepository) GroupService {
-	return &groupService{groupRepo, userRepo}
+func NewGroupService(groupRepo repositories.GroupRepository, userRepo repositories.UserRepository, hub *websockets.Hub) GroupService {
+	return &groupService{groupRepo, userRepo, hub}
 }
 
 func (s *groupService) CreateGroup(name string, creatorID string) (*models.Group, error) {
@@ -66,8 +68,11 @@ func (s *groupService) CreateGroup(name string, creatorID string) (*models.Group
 		return nil, fmt.Errorf("error adding creator to group: %w", err)
 	}
 
+	// Add user to websocket hub
+	s.hub.AddClientToGroup(creator.ID.String(), group.ID.String())
 	return group, nil
 }
+
 func (s *groupService) JoinGroup(groupID string, userID string) error {
 	group, err := s.groupRepo.GetByID(groupID)
 	if err != nil {
@@ -80,6 +85,9 @@ func (s *groupService) JoinGroup(groupID string, userID string) error {
 	if group == nil || user == nil {
 		return errors.New("group or user not found")
 	}
+	// Add user to websocket hub
+	s.hub.AddClientToGroup(userID, groupID)
+
 	return s.groupRepo.AddUser(group, user)
 }
 
@@ -96,6 +104,8 @@ func (s *groupService) LeaveGroup(groupID string, userID string) error {
 	if group == nil || user == nil {
 		return errors.New("group or user not found")
 	}
+	// Remove user from websocket hub
+	s.hub.RemoveClientFromGroup(userID, groupID)
 	return s.groupRepo.RemoveUser(group, user)
 }
 func (s *groupService) GetGroupByID(id string) (*models.Group, error) {

@@ -18,21 +18,38 @@ export default {
   props:{
     receiverID: {
       type: String,
-      required: true
+      required: false, // Now optional
+      default: null,
+    },
+    groupID: { // Add groupID prop
+      type: String,
+      required: false, // Optional
+      default: null,
     }
   },
   setup(props) {
     const store = useStore();
     const message = ref('');
-    const currentUser = computed(()=> store.getters.currentUser)
+    const currentUser = computed(() => store.getters.currentUser)
 
     const sendMessage = () => {
       if (message.value.trim() !== '') {
-        const msg = {
-          type: "new_message",
-          sender_id: currentUser.value.id,
-          receiver_id: props.receiverID,
-          content: message.value
+        let msg = {};
+        // Determine if it is a group message or direct message
+        if (props.groupID) {
+          msg = {
+            type: "new_message",
+            sender_id: currentUser.value.id,
+            group_id: props.groupID, // Send group_id if set
+            content: message.value
+          }
+        } else {
+          msg = {
+            type: "new_message",
+            sender_id: currentUser.value.id,
+            receiver_id: props.receiverID, // Send receiver_id if set
+            content: message.value
+          }
         }
         store.state.ws.send(JSON.stringify(msg)) // Send over WebSocket
 
@@ -42,27 +59,48 @@ export default {
     const handleTyping = () => {
       // Clear any existing timeout
       clearTimeout(typingTimeout);
+      if (props.groupID || props.receiverID) {
+        // Send "typing" event immediately
+        let typingMsg = {};
+        if (props.groupID) {
+          typingMsg = {
+            type: "typing",
+            sender_id: currentUser.value.id,
+            group_id: props.groupID, // Send group_id if set
 
-      // Send "typing" event immediately
-      const typingMsg = {
-        type: "typing",
-        sender_id: currentUser.value.id,
-        receiver_id: props.receiverID
-      }
-      store.state.ws.send(JSON.stringify(typingMsg));
+          }
+        } else {
+          typingMsg = {
+            type: "typing",
+            sender_id: currentUser.value.id,
+            receiver_id: props.receiverID, // Send receiver_id if set
 
-      // Set a timeout to send "stop_typing" after a delay (e.g., 2 seconds)
-      typingTimeout = setTimeout(() => {
-        const stopTypingMsg = {
-          type: "stop_typing",
-          sender_id: currentUser.value.id,
-          receiver_id: props.receiverID
+          }
         }
-        store.state.ws.send(JSON.stringify(stopTypingMsg));
-      }, 2000); // 2 seconds
+        store.state.ws.send(JSON.stringify(typingMsg));
+        // Set a timeout to send "stop_typing" after a delay (e.g., 2 seconds)
+        typingTimeout = setTimeout(() => {
+          let stopTypingMsg = {};
+          if (props.groupID) {
+            stopTypingMsg = {
+              type: "stop_typing",
+              sender_id: currentUser.value.id,
+              group_id: props.groupID
+            }
+          } else {
+            stopTypingMsg = {
+              type: "stop_typing",
+              sender_id: currentUser.value.id,
+              receiver_id: props.receiverID
+            }
+          }
+          store.state.ws.send(JSON.stringify(stopTypingMsg));
+        }, 2000); // 2 seconds
+      }
+
     };
 
-    return { message, sendMessage, handleTyping };
+    return {message, sendMessage, handleTyping};
   }
 };
 </script>

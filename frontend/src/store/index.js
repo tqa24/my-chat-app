@@ -1,5 +1,5 @@
 import { createStore } from 'vuex';
-
+import axios from 'axios';
 export default createStore({
     state: {
         user: null, // Store user information
@@ -44,9 +44,21 @@ export default createStore({
     actions: {
         login({ commit }, user) {
             commit('setUser', user);
+            // Set the Authorization header after successful login
+            const token = localStorage.getItem('token');
+            if (token) {
+                axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            }
         },
         logout({ commit }) {
+            // Clear the Authorization header on logout
+            delete axios.defaults.headers.common['Authorization'];
             commit('setUser', null);
+
+            //Close websocket
+            if (this.state.ws) {
+                this.state.ws.close();
+            }
         },
         setMessages({ commit }, messages) {
             commit('setMessages', messages);

@@ -9,6 +9,7 @@ import (
 type MessageRepository interface {
 	Create(message *models.Message) error
 	GetConversation(user1ID, user2ID string, limit, offset int) ([]models.Message, error)
+	GetGroupConversation(groupID string, limit, offset int) ([]models.Message, error) // New
 }
 
 type messageRepository struct {
@@ -28,6 +29,17 @@ func (r *messageRepository) GetConversation(user1ID, user2ID string, limit, offs
 	err := r.db.
 		Where("(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)", user1ID, user2ID, user2ID, user1ID).
 		Order("created_at desc"). // Most recent first
+		Limit(limit).
+		Offset(offset).
+		Find(&messages).Error
+	return messages, err
+}
+
+func (r *messageRepository) GetGroupConversation(groupID string, limit, offset int) ([]models.Message, error) {
+	var messages []models.Message
+	err := r.db.
+		Where("group_id = ?", groupID).
+		Order("created_at desc").
 		Limit(limit).
 		Offset(offset).
 		Find(&messages).Error
