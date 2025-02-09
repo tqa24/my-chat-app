@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"log"
 	"my-chat-app/models"
 
 	"gorm.io/gorm"
@@ -40,6 +41,7 @@ func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 
 func (r *userRepository) GetByID(id string) (*models.User, error) {
 	var user models.User
+	log.Printf("GetByID: UserID: %s", id) // Add this log
 	err := r.db.Where("id = ?", id).First(&user).Error
 	return &user, err
 }

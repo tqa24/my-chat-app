@@ -30,13 +30,13 @@ export default {
   setup(props) {
     const store = useStore();
     const message = ref('');
-    const currentUser = computed(() => store.getters.currentUser)
+    const currentUser = computed(()=> store.getters.currentUser)
 
     const sendMessage = () => {
       if (message.value.trim() !== '') {
         let msg = {};
         // Determine if it is a group message or direct message
-        if (props.groupID) {
+        if(props.groupID){
           msg = {
             type: "new_message",
             sender_id: currentUser.value.id,
@@ -59,10 +59,10 @@ export default {
     const handleTyping = () => {
       // Clear any existing timeout
       clearTimeout(typingTimeout);
-      if (props.groupID || props.receiverID) {
+      if(props.groupID || props.receiverID){
         // Send "typing" event immediately
         let typingMsg = {};
-        if (props.groupID) {
+        if(props.groupID){
           typingMsg = {
             type: "typing",
             sender_id: currentUser.value.id,
@@ -81,7 +81,7 @@ export default {
         // Set a timeout to send "stop_typing" after a delay (e.g., 2 seconds)
         typingTimeout = setTimeout(() => {
           let stopTypingMsg = {};
-          if (props.groupID) {
+          if(props.groupID) {
             stopTypingMsg = {
               type: "stop_typing",
               sender_id: currentUser.value.id,
@@ -100,7 +100,7 @@ export default {
 
     };
 
-    return {message, sendMessage, handleTyping};
+    return { message, sendMessage, handleTyping };
   }
 };
 </script>

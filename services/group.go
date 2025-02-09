@@ -113,15 +113,23 @@ func (s *groupService) GetGroupByID(id string) (*models.Group, error) {
 }
 
 func (s *groupService) ListGroupsForUser(userID string) ([]*models.Group, error) {
+	log.Printf("ListGroupsForUser: UserID: %s", userID) // Log the userID
 	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
+		log.Printf("ListGroupsForUser: Error getting user: %v", err) // Log the error
 		return nil, err
 	}
 	if user == nil {
+		log.Printf("ListGroupsForUser: User not found") // Log if user is nil
 		return nil, errors.New("user not found")
 	}
-	return s.groupRepo.GetGroupsForUser(user)
+	groups, err := s.groupRepo.GetGroupsForUser(user) // user, not userID
+	if err != nil {
+		log.Printf("List groups for user error %v", err)
+	}
+	return groups, err // Log the error
 }
+
 func (s *groupService) GetAllGroups() ([]models.Group, error) {
 	return s.groupRepo.GetAll()
 }

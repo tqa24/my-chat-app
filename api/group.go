@@ -109,15 +109,19 @@ func (h *GroupHandler) LeaveGroup(c *gin.Context) {
 
 func (h *GroupHandler) ListGroupsForUser(c *gin.Context) {
 	userID := c.Param("id")
+	log.Printf("ListGroupsForUser: UserID from Param: %s", userID) // Log the userID
+
 	// In a real scenario, you would also verify that the requesting user
 	// has permission to see this user's groups (often, it's themselves).
 
 	groups, err := h.groupService.ListGroupsForUser(userID)
 	if err != nil {
+		log.Printf("ListGroupsForUser: Error from groupService: %v", err) // Log the error
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	log.Printf("ListGroupsForUser: Groups found: %+v", groups) // Log the groups
 	c.JSON(http.StatusOK, groups)
 }
 func (h *GroupHandler) GetAllGroups(c *gin.Context) {

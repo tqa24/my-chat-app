@@ -1,3 +1,4 @@
+// websockets/hub.go
 package websockets
 
 import (

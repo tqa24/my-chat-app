@@ -46,9 +46,10 @@
 
     <!-- Typing indicator (updated for groups)-->
     <div v-if="typingUsers.length > 0" class="typing-indicator">
-        <span v-for="username in typingUsers" :key="username">
-            {{ username }} is typing...
-        </span>
+      <span v-for="username in typingUsers" :key="username">{{
+          username
+        }}</span>
+      is typing...
     </div>
   </div>
 </template>
@@ -70,7 +71,7 @@ export default {
     const store = useStore();
     const ws = ref(null);
     const currentUser = computed(() => store.getters.currentUser);
-    const selectedUser = ref(null); // Selected user to chat
+    const selectedUser = ref(null); //Selected user to chat
     const selectedGroup = ref(null); // Selected group to chat
     const usersOnline = computed(() => store.getters.getUsersOnline);
     const typingUsers = computed(() => store.getters.typingUsers);
@@ -78,10 +79,10 @@ export default {
     const userGroups = ref([]); // To store user's groups
 
     onMounted(async () => {
-      if (currentUser.value) { // Check if user is logged in
+      if (currentUser.value) {
         connectWebSocket();
-        fetchAllUsers(); // Fetch all users
-        fetchUserGroups(); // Fetch user's groups
+        fetchAllUsers(); // Fetch all users when component mounts
+        await fetchUserGroups(); // Fetch user's groups // Add await
       }
     });
 
@@ -110,8 +111,7 @@ export default {
     // --- Fetch Users ---
     const fetchAllUsers = async () => {
       //Get all user and add to user online
-      axios.get(`http://localhost:8080/users`).then(res => { //Removed await
-
+      axios.get(`http://localhost:8080/users`).then(res => {
         const users = res.data.map(user => ({
           id: user.id,
           username: user.username,
@@ -123,25 +123,24 @@ export default {
       }).catch(err => {
         console.error("Error", err)
       })
-    };
+    }
 
     // --- Fetch User's Groups ---
     const fetchUserGroups = async () => {
       try {
         const response = await axios.get(
-            `http://localhost:8080/users/${currentUser.value?.id}/groups`
+            `http://localhost:8080/users/${currentUser.value?.id}/groups` // Use ? here
         );
         userGroups.value = response.data;
+        console.log("User groups:", userGroups.value); // Add this line
+
       } catch (error) {
         console.error("Failed to fetch user's groups:", error);
       }
     };
     const connectWebSocket = () => {
-      if (!currentUser.value) {
-        return; // Don't connect if not logged in
-      }
       ws.value = new WebSocket(
-          `ws://localhost:8080/ws?userID=${currentUser.value.id}`
+          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`// Add ? here
       );
       store.commit("setWs", ws.value);
       ws.value.onopen = () => {
@@ -246,7 +245,7 @@ export default {
     const fetchGroupMessages = async () => {
       try {
         const response = await axios.get(
-            `http://localhost:8080/groups/${selectedGroup.value.id}/messages`
+            `http://localhost:8080/groups/${selectedGroup.value?.id}/messages`
         );
         store.dispatch("setMessages", response.data);
       } catch (error) {

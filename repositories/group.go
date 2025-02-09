@@ -1,8 +1,6 @@
 package repositories
 
 import (
-	"errors"
-	"log"
 	"my-chat-app/models"
 
 	"gorm.io/gorm"
@@ -14,7 +12,7 @@ type GroupRepository interface {
 	AddUser(group *models.Group, user *models.User) error
 	RemoveUser(group *models.Group, user *models.User) error
 	GetUsers(group *models.Group) ([]*models.User, error)
-	GetGroupsForUser(user *models.User) ([]*models.Group, error)
+	GetGroupsForUser(user *models.User) ([]*models.Group, error) // Corrected
 	GetAll() ([]models.Group, error)
 	Update(group *models.Group) error
 	Delete(id string) error
@@ -39,10 +37,6 @@ func (r *groupRepository) GetByID(id string) (*models.Group, error) {
 }
 
 func (r *groupRepository) AddUser(group *models.Group, user *models.User) error {
-	log.Printf("Add user to group: %v %v", group.ID, user.ID)
-	if group == nil || user == nil {
-		return errors.New("group or user is nil") // Prevent panics
-	}
 	return r.db.Exec("INSERT INTO user_groups (user_id, group_id) VALUES (?, ?)", user.ID, group.ID).Error
 
 }
@@ -56,12 +50,6 @@ func (r *groupRepository) GetUsers(group *models.Group) ([]*models.User, error) 
 	err := r.db.Model(group).Association("Users").Find(&users)
 	return users, err
 }
-
-func (r *groupRepository) GetGroupsForUser(user *models.User) ([]*models.Group, error) {
-	var groups []*models.Group
-	err := r.db.Model(user).Association("Groups").Find(&groups)
-	return groups, err
-}
 func (r *groupRepository) GetAll() ([]models.Group, error) {
 	var groups []models.Group
 	err := r.db.Preload("Users").Find(&groups).Error // Preload associated users
@@ -74,4 +62,14 @@ func (r *groupRepository) Update(group *models.Group) error {
 
 func (r *groupRepository) Delete(id string) error {
 	return r.db.Where("id = ?", id).Delete(&models.Group{}).Error
+}
+
+// Corrected
+func (r *groupRepository) GetGroupsForUser(user *models.User) ([]*models.Group, error) {
+	var groups []*models.Group
+	err := r.db.Model(&models.Group{}). // Use Group model as the base
+						Joins("JOIN user_groups ON user_groups.group_id = groups.id"). // Explicit join
+						Where("user_groups.user_id = ?", user.ID).                     // Correct condition
+						Find(&groups).Error                                            // Find groups
+	return groups, err
 }
