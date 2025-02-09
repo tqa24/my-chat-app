@@ -1,11 +1,12 @@
-<script setup>
-
-</script>
-
 <template>
-  $END$
+  <RegisterForm />
 </template>
 
-<style scoped>
-
-</style>
+<script>
+import RegisterForm from '../components/RegisterForm.vue';
+export default {
+  components: {
+    RegisterForm,
+  },
+};
+</script>

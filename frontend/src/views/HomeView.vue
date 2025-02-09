@@ -1,11 +1,14 @@
-<script setup>
-
-</script>
-
 <template>
-  $END$
+  <div class="home">
+    <ChatWindow />
+  </div>
 </template>
 
-<style scoped>
-
-</style>
+<script>
+import ChatWindow from '../components/ChatWindow.vue';
+export default {
+  components: {
+    ChatWindow
+  }
+}
+</script>

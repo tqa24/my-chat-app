@@ -1,4 +1,26 @@
-FROM ubuntu:latest
-LABEL authors="ankha"
+# Dockerfile
+# Stage 1: Build the Go application
+FROM golang:1.21 AS builder
 
-ENTRYPOINT ["top", "-b"]
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/main.go
+
+# Stage 2: Create a minimal image
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+
+COPY --from=builder /app/main .
+COPY --from=builder /app/.env .
+
+EXPOSE 8080
+
+CMD ["./main"]
