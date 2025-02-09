@@ -7,6 +7,7 @@ export default createStore({
         usersOnline: [], //Online user
         typingUsers: [], // Type user
         ws: null, // Add WebSocket
+        selectedGroup: null,
     },
     mutations: {
         setUser(state, user) {

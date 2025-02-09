@@ -16,7 +16,11 @@
       <div v-else-if="selectedGroup">
         <h2>Chatting with {{ selectedGroup.name }}</h2>
         <ChatMessages />
-        <ChatInput :groupID="selectedGroup.id" :receiverID="null"/>
+        <ChatInput
+            v-if="selectedGroup"
+            :groupID="selectedGroup.id"
+            :receiverID="null"
+        />
       </div>
     </div>
     <div v-else>
@@ -38,8 +42,8 @@
       <!-- Group list -->
       <div class="group-list">
         <h3>Groups</h3>
-        <div v-for="group in userGroups" :key="group.id" class="group-item" @click="startChatWithGroup(group)">
-          <span>{{ group.name }}</span>
+        <div v-for="group in userGroups" :key="group.ID" class="group-item" @click="startChatWithGroup(group)">
+          <span>{{ group.Name }}</span>
         </div>
       </div>
     </div>
@@ -81,8 +85,10 @@ export default {
     onMounted(async () => {
       if (currentUser.value) {
         connectWebSocket();
-        fetchAllUsers(); // Fetch all users when component mounts
-        await fetchUserGroups(); // Fetch user's groups // Add await
+        await fetchAllUsers(); // Fetch all users when component mounts
+        await fetchUserGroups(); // Fetch user's groups  //Add await
+        console.log("userGroups after fetch:", userGroups.value); // Add this line
+
       }
     });
 
@@ -102,10 +108,19 @@ export default {
 
     // --- Group Selection ---
     const startChatWithGroup = async (group) => {
-      selectedGroup.value = group;
+      console.log("Starting chat with group:", group); // Add logging
+      selectedGroup.value = {
+        id: group.ID,    // Make sure to use capital ID
+        name: group.Name // Make sure to use capital Name
+      };
       selectedUser.value = null; // Clear selected user
       store.dispatch('clearMessages'); // Clear existing messages
-      await fetchGroupMessages();  // Fetch messages for the selected group
+
+      if (group.ID) { // Verify we have a valid ID before fetching
+        await fetchGroupMessages();
+      } else {
+        console.error("Invalid group ID");
+      }
     };
 
     // --- Fetch Users ---
@@ -132,8 +147,7 @@ export default {
             `http://localhost:8080/users/${currentUser.value?.id}/groups` // Use ? here
         );
         userGroups.value = response.data;
-        console.log("User groups:", userGroups.value); // Add this line
-
+        console.log("User groups:", userGroups.value); // Add this line!
       } catch (error) {
         console.error("Failed to fetch user's groups:", error);
       }
@@ -232,24 +246,32 @@ export default {
       };
     };
     const fetchMessages = async () => {
-      try {
-        const response = await axios.get(
-            `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}` // Add ? here
-        );
-        store.dispatch("setMessages", response.data);
-      } catch (error) {
-        console.error("Failed to fetch messages:", error);
+      // Only fetch messages if a user is selected
+      if (selectedUser.value) {
+        try {
+          const response = await axios.get(
+              `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}`
+          );
+          store.dispatch('setMessages', response.data);
+        } catch (error) {
+          console.error("Failed to fetch messages:", error);
+        }
       }
     };
 
     const fetchGroupMessages = async () => {
-      try {
-        const response = await axios.get(
-            `http://localhost:8080/groups/${selectedGroup.value?.id}/messages`
-        );
-        store.dispatch("setMessages", response.data);
-      } catch (error) {
-        console.error("Failed to fetch group messages:", error);
+      if (selectedGroup.value && selectedGroup.value.id) {
+        try {
+          console.log("Fetching messages for group:", selectedGroup.value.id);
+          const response = await axios.get(
+              `http://localhost:8080/groups/${selectedGroup.value.id}/messages`
+          );
+          store.dispatch('setMessages', response.data);
+        } catch (error) {
+          console.error("Failed to fetch group messages:", error);
+        }
+      } else {
+        console.error("No group selected or invalid group ID");
       }
     };
 
