@@ -43,6 +43,7 @@ type WebSocketMessage struct {
 	Type       string `json:"type"`
 	SenderID   string `json:"sender_id"`
 	ReceiverID string `json:"receiver_id"`
+	GroupID    string `json:"group_id"`
 	Content    string `json:"content"`
 	MessageID  string `json:"message_id"`
 }
@@ -73,11 +74,24 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 		switch wsMessage.Type {
 		case "new_message":
 			// Use the MessageSaver interface to save the message
-			err := messageSaver.SendMessage(wsMessage.SenderID, wsMessage.ReceiverID, wsMessage.Content)
-			if err != nil {
-				log.Printf("Error saving message: %v", err)
+			//Check if receiver or group
+			if wsMessage.ReceiverID != "" {
+				err := messageSaver.SendMessage(wsMessage.SenderID, wsMessage.ReceiverID, "", wsMessage.Content)
+				if err != nil {
+					log.Printf("Error saving message: %v", err)
+					continue
+				}
+			} else if wsMessage.GroupID != "" {
+				err := messageSaver.SendMessage(wsMessage.SenderID, "", wsMessage.GroupID, wsMessage.Content)
+				if err != nil {
+					log.Printf("Error saving message: %v", err)
+					continue
+				}
+			} else {
+				log.Printf("Error saving message: Missing receiverID and groupID")
 				continue
 			}
+
 		case "typing": // Handle typing indicator
 			wsMessage.SenderID = c.UserID
 			// Broadcast typing indicator to the recipient

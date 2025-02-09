@@ -37,8 +37,8 @@ func main() {
 
 	// Initialize services
 	authService := services.NewAuthService(userRepo)
-	chatService := services.NewChatService(messageRepo, hub)
-	groupService := services.NewGroupService(groupRepo, userRepo) // Add Group Service
+	chatService := services.NewChatService(messageRepo, groupRepo, hub) // Add Group Service
+	groupService := services.NewGroupService(groupRepo, userRepo, hub)
 
 	// Initialize handlers
 	authHandler := api.NewAuthHandler(authService, userRepo)
@@ -65,6 +65,7 @@ func main() {
 	r.POST("/groups/:id/leave", groupHandler.LeaveGroup)       // Leave a group
 	r.GET("/users/:id/groups", groupHandler.ListGroupsForUser) // List groups for a user
 	r.GET("/groups", groupHandler.GetAllGroups)
+	r.GET("/groups/:id/messages", chatHandler.GetGroupConversation) // For get group conversation
 
 	// Start the server
 	log.Printf("Server listening on port %s", config.AppConfig.AppPort)

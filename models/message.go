@@ -1,10 +1,10 @@
 package models
 
 import (
+	"gorm.io/gorm"
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm" // Import gorm
 )
 
 type Message struct {
@@ -20,8 +20,16 @@ type Message struct {
 	Group      Group      `gorm:"foreignKey:GroupID;references:ID" json:"group"`       // Add Group
 }
 
+//// BeforeCreate hook to generate UUID for the message ID.
+//func (m *Message) BeforeCreate(tx *gorm.DB) (err error) {
+//	m.ID = uuid.New() // Generate a new UUID
+//	return
+//}
+
 // BeforeCreate hook to generate UUID for the message ID.
 func (m *Message) BeforeCreate(tx *gorm.DB) (err error) {
-	m.ID = uuid.New() // Generate a new UUID
+	if m.ID == uuid.Nil {
+		m.ID = uuid.New() // Generate a new UUID
+	}
 	return
 }

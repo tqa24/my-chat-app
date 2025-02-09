@@ -1,38 +1,54 @@
 <template>
   <div class="chat-container">
-    <!-- Add this section for the profile -->
     <div v-if="currentUser" class="profile-info">
       Logged in as: <strong>{{ currentUser.username }}</strong>
     </div>
 
-    <div v-if="selectedUser">
-      <h2>Chatting with {{ selectedUser.username }}</h2>
-      <ChatMessages />
-      <ChatInput :receiverID="selectedUser.id" />
+    <!-- Display either selected user/group or the selection lists -->
+    <div v-if="selectedUser || selectedGroup">
+      <!-- Chatting with a User -->
+      <div v-if="selectedUser">
+        <h2>Chatting with {{ selectedUser.username }}</h2>
+        <ChatMessages />
+        <ChatInput :receiverID="selectedUser.id" :groupID="null"/>
+      </div>
+      <!-- Chatting with a group -->
+      <div v-else-if="selectedGroup">
+        <h2>Chatting with {{ selectedGroup.name }}</h2>
+        <ChatMessages />
+        <ChatInput :groupID="selectedGroup.id" :receiverID="null"/>
+      </div>
     </div>
     <div v-else>
-      <h2>Select user to chat</h2>
+      <h2>Select user or group to chat</h2>
       <!-- Search input -->
       <input v-model="searchQuery" placeholder="Search users..." />
       <div class="user-list">
+        <h3>Users</h3>
         <div
             v-for="user in filteredUsers"
             :key="user.id"
             class="user-item"
-            @click="startChat(user)"
+            @click="startChatWithUser(user)"
         >
           <span :class="{ 'online-dot': user.status === 'online' }"></span>
           {{ user.username }}
         </div>
       </div>
+      <!-- Group list -->
+      <div class="group-list">
+        <h3>Groups</h3>
+        <div v-for="group in userGroups" :key="group.id" class="group-item" @click="startChatWithGroup(group)">
+          <span>{{ group.name }}</span>
+        </div>
+      </div>
     </div>
 
-    <!-- Typing indicator -->
+    <!-- Typing indicator (updated for groups)-->
     <div v-if="typingUsers.length > 0" class="typing-indicator">
-      <span v-for="username in typingUsers" :key="username">{{
-          username
-        }}</span>
-      is typing...
+        <span v-for="username in typingUsers" :key="username">
+            {{ username }} is typing...
+        </span>
     </div>
   </div>
 </template>
@@ -54,15 +70,18 @@ export default {
     const store = useStore();
     const ws = ref(null);
     const currentUser = computed(() => store.getters.currentUser);
-    const selectedUser = ref(null); //Selected user to chat
+    const selectedUser = ref(null); // Selected user to chat
+    const selectedGroup = ref(null); // Selected group to chat
     const usersOnline = computed(() => store.getters.getUsersOnline);
     const typingUsers = computed(() => store.getters.typingUsers);
     const searchQuery = ref(""); // Add search query
+    const userGroups = ref([]); // To store user's groups
 
     onMounted(async () => {
-      if (currentUser.value) {
+      if (currentUser.value) { // Check if user is logged in
         connectWebSocket();
-        fetchAllUsers(); // Fetch all users when component mounts
+        fetchAllUsers(); // Fetch all users
+        fetchUserGroups(); // Fetch user's groups
       }
     });
 
@@ -71,14 +90,28 @@ export default {
         ws.value.close();
       }
     });
-    const startChat = async (user) => {
+
+    // --- User selection ---
+    const startChatWithUser = async (user) => {
       selectedUser.value = user;
+      selectedGroup.value = null; // Clear selected group
       store.dispatch("clearMessages"); // Clear previous messages
       await fetchMessages(); // Fetch messages for the new conversation
     };
+
+    // --- Group Selection ---
+    const startChatWithGroup = async (group) => {
+      selectedGroup.value = group;
+      selectedUser.value = null; // Clear selected user
+      store.dispatch('clearMessages'); // Clear existing messages
+      await fetchGroupMessages();  // Fetch messages for the selected group
+    };
+
+    // --- Fetch Users ---
     const fetchAllUsers = async () => {
       //Get all user and add to user online
-      axios.get(`http://localhost:8080/users`).then(res => {
+      axios.get(`http://localhost:8080/users`).then(res => { //Removed await
+
         const users = res.data.map(user => ({
           id: user.id,
           username: user.username,
@@ -90,11 +123,25 @@ export default {
       }).catch(err => {
         console.error("Error", err)
       })
-    }
+    };
 
+    // --- Fetch User's Groups ---
+    const fetchUserGroups = async () => {
+      try {
+        const response = await axios.get(
+            `http://localhost:8080/users/${currentUser.value?.id}/groups`
+        );
+        userGroups.value = response.data;
+      } catch (error) {
+        console.error("Failed to fetch user's groups:", error);
+      }
+    };
     const connectWebSocket = () => {
+      if (!currentUser.value) {
+        return; // Don't connect if not logged in
+      }
       ws.value = new WebSocket(
-          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`// Add ? here
+          `ws://localhost:8080/ws?userID=${currentUser.value.id}`
       );
       store.commit("setWs", ws.value);
       ws.value.onopen = () => {
@@ -113,6 +160,10 @@ export default {
             // Only show if have select user and match sender and receive
             if(selectedUser.value && ((data.sender_id === selectedUser.value.id && data.receiver_id === currentUser.value.id) || (data.sender_id === currentUser.value.id && data.receiver_id === selectedUser.value.id) )){
               store.dispatch("addMessage", data);
+            }
+            //Show message if it belong to selected group
+            if(selectedGroup.value && data.group_id === selectedGroup.value.id){
+              store.dispatch("addMessage", data)
             }
             break;
           }
@@ -192,6 +243,17 @@ export default {
       }
     };
 
+    const fetchGroupMessages = async () => {
+      try {
+        const response = await axios.get(
+            `http://localhost:8080/groups/${selectedGroup.value.id}/messages`
+        );
+        store.dispatch("setMessages", response.data);
+      } catch (error) {
+        console.error("Failed to fetch group messages:", error);
+      }
+    };
+
     // Computed property for filtered users
     const filteredUsers = computed(() => {
       if (!searchQuery.value) {
@@ -207,13 +269,16 @@ export default {
       ws,
       connectWebSocket,
       selectedUser,
+      selectedGroup,
       usersOnline,
-      startChat,
+      startChatWithUser,
+      startChatWithGroup,
       typingUsers,
       fetchMessages,
+      fetchGroupMessages,
       searchQuery, // Expose search query
       filteredUsers, // Expose filtered users
-
+      userGroups
     };
   },
 };
@@ -262,5 +327,21 @@ export default {
   padding: 10px;
   border-bottom: 1px solid #ccc;
   margin-bottom: 10px;
+}
+/* Style for group list */
+.group-list {
+  margin-top: 20px;
+  border-top: 1px solid #ccc;
+  padding-top: 10px;
+}
+
+.group-item {
+  padding: 10px;
+  margin: 5px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
 }
 </style>

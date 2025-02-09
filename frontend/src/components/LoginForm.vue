@@ -4,11 +4,11 @@
     <form @submit.prevent="handleSubmit">
       <div class="form-group">
         <label for="identifier">Username or Email:</label>
-        <input type="text" id="identifier" v-model="identifier" required>
+        <input type="text" id="identifier" v-model.trim="identifier" required>
       </div>
       <div class="form-group">
         <label for="password">Password:</label>
-        <input type="password" id="password" v-model="password" required>
+        <input type="password" id="password" v-model.trim="password" required>
       </div>
       <button type="submit" class="submit-button">Login</button>
       <p v-if="error" class="error">{{ error }}</p>
@@ -25,7 +25,7 @@ import { ref } from 'vue';
 export default {
   setup() {
     const identifier = ref('');
-    const password = ref(''); // Simple ref, no trim
+    const password = ref('');
     const error = ref('');
     const router = useRouter();
     const store = useStore();
@@ -34,8 +34,9 @@ export default {
       try {
         const response = await axios.post('http://localhost:8080/login', {
           identifier: identifier.value,
-          password: password.value, // Send the trimmed password
+          password: password.value,
         });
+        // Store the user and token in Vuex
         store.dispatch('login', response.data.user);
         router.push('/'); // Redirect to home page
       } catch (err) {
@@ -47,11 +48,11 @@ export default {
   }
 };
 </script>
+
 <style scoped>
-/* Styles (no changes needed here) */
 .form-container {
   width: 300px;
-  margin: 0 auto;
+  margin: 0 auto; /* Center the form */
   padding: 20px;
   border: 1px solid #ccc;
   border-radius: 5px;
@@ -62,7 +63,7 @@ export default {
 }
 
 label {
-  display: block;
+  display: block; /* Make labels block-level */
   margin-bottom: 5px;
 }
 
@@ -73,7 +74,7 @@ input[type="email"] {
   padding: 8px;
   border: 1px solid #ccc;
   border-radius: 4px;
-  box-sizing: border-box;
+  box-sizing: border-box; /* Include padding and border in the element's width */
 }
 
 .submit-button {
@@ -83,7 +84,7 @@ input[type="email"] {
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  width: 100%;
+  width: 100%; /* Make the button full-width */
 }
 
 .submit-button:hover {

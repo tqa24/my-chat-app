@@ -1,3 +1,4 @@
+// api/chat.go
 package api
 
 import (
@@ -75,19 +76,30 @@ func (h *ChatHandler) WebSocketHandler(c *gin.Context) {
 	go client.ReadPump(h.chatService) // Pass the chatService here!
 }
 func (h *ChatHandler) SendMessage(c *gin.Context) {
-	// Extract message details from request
+	// Extract message details from request (you might get this from a JSON body)
 	senderID := c.PostForm("sender_id")
 	receiverID := c.PostForm("receiver_id")
+	groupID := c.PostForm("group_id") // Get group_id
 	content := c.PostForm("content")
-	fmt.Println(senderID, receiverID, content) // Keep this for debugging
+	fmt.Println(senderID, receiverID, content)
 	// Validate the data
-	if senderID == "" || receiverID == "" || content == "" {
+	if senderID == "" || content == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required fields"})
 		return
 	}
 
+	if receiverID == "" && groupID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ReceiverID or groupID required"})
+		return
+	}
+	// Check if both receiverID and groupID are provided
+	if receiverID != "" && groupID != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot specify both receiverID and groupID"})
+		return
+	}
+
 	// Call the ChatService to send the message
-	err := h.chatService.SendMessage(senderID, receiverID, content) // Corrected line
+	err := h.chatService.SendMessage(senderID, receiverID, groupID, content) // Updated call
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message"})
 		return
@@ -95,4 +107,25 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 
 	// Return a success response
 	c.JSON(http.StatusOK, gin.H{"message": "Message sent successfully"})
+}
+
+// Add new handle func
+func (h *ChatHandler) GetGroupConversation(c *gin.Context) {
+	groupID := c.Param("id")
+
+	page := c.DefaultQuery("page", "1")
+	pageSize := c.DefaultQuery("pageSize", "10")
+
+	if groupID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "groupID parameters are required"})
+		return
+	}
+
+	messages, err := h.chatService.GetGroupConversation(groupID, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve conversation"})
+		return
+	}
+
+	c.JSON(http.StatusOK, messages)
 }
