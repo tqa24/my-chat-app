@@ -29,6 +29,7 @@ func main() {
 	// Initialize repositories
 	userRepo := repositories.NewUserRepository(db)
 	messageRepo := repositories.NewMessageRepository(db)
+	groupRepo := repositories.NewGroupRepository(db) // Add Group Repository
 
 	// Initialize WebSocket hub
 	hub := websockets.NewHub()
@@ -37,10 +38,12 @@ func main() {
 	// Initialize services
 	authService := services.NewAuthService(userRepo)
 	chatService := services.NewChatService(messageRepo, hub)
+	groupService := services.NewGroupService(groupRepo, userRepo) // Add Group Service
 
 	// Initialize handlers
-	authHandler := api.NewAuthHandler(authService, userRepo) // Pass userRepo
+	authHandler := api.NewAuthHandler(authService, userRepo)
 	chatHandler := api.NewChatHandler(chatService, hub)
+	groupHandler := api.NewGroupHandler(groupService) // Add Group Handler
 
 	// Initialize Gin router
 	r := gin.Default()
@@ -54,7 +57,14 @@ func main() {
 	r.GET("/ws", chatHandler.WebSocketHandler)
 	r.GET("/messages", chatHandler.GetConversation) // For get conversation
 	r.POST("/messages", chatHandler.SendMessage)    // For send message
-	r.GET("/users", authHandler.GetAllUsers)        // Add the new route
+	r.GET("/users", authHandler.GetAllUsers)
+	// Group routes
+	r.POST("/groups", groupHandler.CreateGroup)                // Create a new group
+	r.GET("/groups/:id", groupHandler.GetGroup)                // Get group details
+	r.POST("/groups/:id/join", groupHandler.JoinGroup)         // Join a group
+	r.POST("/groups/:id/leave", groupHandler.LeaveGroup)       // Leave a group
+	r.GET("/users/:id/groups", groupHandler.ListGroupsForUser) // List groups for a user
+	r.GET("/groups", groupHandler.GetAllGroups)
 
 	// Start the server
 	log.Printf("Server listening on port %s", config.AppConfig.AppPort)

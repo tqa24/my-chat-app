@@ -1,0 +1,117 @@
+// services/group.go
+package services
+
+import (
+	"errors"
+	"fmt"
+	"log"
+	"my-chat-app/models"
+	"my-chat-app/repositories"
+
+	"github.com/google/uuid"
+)
+
+type GroupService interface {
+	CreateGroup(name string, creatorID string) (*models.Group, error)
+	JoinGroup(groupID string, userID string) error
+	LeaveGroup(groupID string, userID string) error
+	GetGroupByID(id string) (*models.Group, error)
+	ListGroupsForUser(userID string) ([]*models.Group, error)
+	GetAllGroups() ([]models.Group, error)
+}
+
+type groupService struct {
+	groupRepo repositories.GroupRepository
+	userRepo  repositories.UserRepository // Need UserRepository to get User by ID
+}
+
+func NewGroupService(groupRepo repositories.GroupRepository, userRepo repositories.UserRepository) GroupService {
+	return &groupService{groupRepo, userRepo}
+}
+
+func (s *groupService) CreateGroup(name string, creatorID string) (*models.Group, error) {
+	// Parse the creatorID to ensure it's a valid UUID.
+	_, err := uuid.Parse(creatorID) // Use creatorID directly
+	if err != nil {
+		log.Printf("CreateGroup: Invalid creatorID: %v, Error: %v", creatorID, err)
+		return nil, fmt.Errorf("invalid creator ID: %w", err)
+	}
+
+	group := &models.Group{
+		Name:  name,
+		Users: []*models.User{}, // Initialize the Users slice
+	}
+
+	err = s.groupRepo.Create(group)
+	if err != nil {
+		log.Printf("CreateGroup: Error creating group: %v", err)
+		return nil, fmt.Errorf("error creating group: %w", err)
+	}
+
+	// Get the creator user by ID.
+	creator, err := s.userRepo.GetByID(creatorID) // Use creatorID directly
+	if err != nil {
+		log.Printf("CreateGroup: Creator not found: %v, Error: %v", creatorID, err)
+		// Rollback: Delete the group if the creator doesn't exist.
+		s.groupRepo.Delete(group.ID.String())
+		return nil, fmt.Errorf("creator not found: %w", err)
+	}
+
+	// Add the creator as a member of the group.
+	err = s.groupRepo.AddUser(group, creator)
+	if err != nil {
+		log.Printf("CreateGroup: Error adding creator to group: %v", err)
+		// Rollback: Delete the group if adding the user fails.
+		s.groupRepo.Delete(group.ID.String())
+		return nil, fmt.Errorf("error adding creator to group: %w", err)
+	}
+
+	return group, nil
+}
+func (s *groupService) JoinGroup(groupID string, userID string) error {
+	group, err := s.groupRepo.GetByID(groupID)
+	if err != nil {
+		return err
+	}
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return err
+	}
+	if group == nil || user == nil {
+		return errors.New("group or user not found")
+	}
+	return s.groupRepo.AddUser(group, user)
+}
+
+func (s *groupService) LeaveGroup(groupID string, userID string) error {
+	group, err := s.groupRepo.GetByID(groupID)
+	if err != nil {
+		return err
+	}
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return err
+	}
+
+	if group == nil || user == nil {
+		return errors.New("group or user not found")
+	}
+	return s.groupRepo.RemoveUser(group, user)
+}
+func (s *groupService) GetGroupByID(id string) (*models.Group, error) {
+	return s.groupRepo.GetByID(id)
+}
+
+func (s *groupService) ListGroupsForUser(userID string) ([]*models.Group, error) {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+	return s.groupRepo.GetGroupsForUser(user)
+}
+func (s *groupService) GetAllGroups() ([]models.Group, error) {
+	return s.groupRepo.GetAll()
+}

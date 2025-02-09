@@ -12,7 +12,7 @@ type User struct {
 	Username  string    `gorm:"unique;not null" json:"username"`
 	Password  string    `gorm:"not null" json:"password"`
 	Email     string    `gorm:"unique;not null" json:"email"`
-	LastSeen  time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"last_seen"`
+	LastSeen  time.Time `gorm:"type:timestamp with time zone" json:"last_seen"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

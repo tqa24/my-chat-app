@@ -12,6 +12,7 @@ import (
 
 type ChatService interface {
 	SendMessage(senderID, receiverID, content string) error // Return only error
+	//Change below
 	GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, error)
 	UpdateMessageStatus(messageID string, status string) error
 }
@@ -30,13 +31,18 @@ func (s *chatService) SendMessage(senderID, receiverID, content string) error { 
 	if err != nil {
 		return fmt.Errorf("invalid sender ID: %v", err)
 	}
-	receiverUUID, err := uuid.Parse(receiverID)
-	if err != nil {
-		return fmt.Errorf("invalid receiver ID: %v", err)
+	//Change below
+	var receiverUUID *uuid.UUID
+	if receiverID != "" {
+		id, err := uuid.Parse(receiverID)
+		if err != nil {
+			return fmt.Errorf("invalid receiver ID: %v", err)
+		}
+		receiverUUID = &id
 	}
 	message := &models.Message{
 		SenderID:   senderUUID,
-		ReceiverID: receiverUUID,
+		ReceiverID: receiverUUID, // Use the pointer
 		Content:    content,
 		Status:     "sent", // Initial status
 	}
@@ -45,8 +51,8 @@ func (s *chatService) SendMessage(senderID, receiverID, content string) error { 
 	if err != nil {
 		return err
 	}
-	// Broadcast the message to the receiver via WebSockets
-	s.hub.Broadcast <- []byte(fmt.Sprintf(`{"type": "new_message", "sender_id": "%s", "receiver_id": "%s", "content": "%s", "message_id": "%s", "created_at": "%s"}`, senderID, receiverID, content, message.ID.String(), message.CreatedAt.Format("2006-01-02 15:04:05")))
+	// Broadcast the message to the receiver via WebSockets, add message id
+	s.hub.Broadcast <- []byte(fmt.Sprintf(`{"type": "new_message", "sender_id": "%s", "receiver_id": "%s", "content": "%s", "message_id": "%s","created_at": "%s"}`, senderID, receiverID, content, message.ID.String(), message.CreatedAt.Format("2006-01-02 15:04:05")))
 
 	return nil // Return only the error
 }
