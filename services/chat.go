@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
 	"my-chat-app/models"
 	"my-chat-app/repositories"
@@ -55,9 +56,9 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content string)
 	message := &models.Message{
 		SenderID:   senderUUID,
 		ReceiverID: receiverUUID,
-		GroupID:    groupUUID, // Set the GroupID
+		GroupID:    groupUUID,
 		Content:    content,
-		Status:     "sent", // Initial status
+		Status:     "sent",
 	}
 
 	err = s.messageRepo.Create(message)
@@ -65,21 +66,35 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content string)
 		return err
 	}
 
-	// Broadcast logic (will be updated later for groups)
+	// Construct a map for the message data
+	msgData := map[string]interface{}{
+		"type":       "new_message",
+		"sender_id":  senderID,
+		"content":    content,
+		"message_id": message.ID.String(),
+		"created_at": message.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	// Add receiver_id or group_id based on message type
 	if groupUUID != nil {
-		// Group message. Get all user and send message
-		users, err := s.groupRepo.GetUsers(&models.Group{ID: *groupUUID})
-		if err != nil {
-			return err
+		msgData["group_id"] = groupID
+		// Group message:  Broadcast to group members *only*.
+		// Loop through all users of this group
+		for userID := range s.hub.Groups[groupID] {
+			if client, ok := s.hub.Clients[userID]; ok {
+				msgBytes, _ := json.Marshal(msgData) // Convert to JSON
+				select {
+				case client.Send <- msgBytes: // Send the JSON message
+				default:
+					close(client.Send)
+					delete(s.hub.Clients, userID)
+				}
+			}
 		}
-		for _, user := range users {
-			s.hub.Broadcast <- []byte(fmt.Sprintf(`{"type": "new_message", "sender_id": "%s", "group_id": "%s", "content": "%s", "message_id": "%s", "created_at": "%s", "receiver_id": "%s"}`, senderID, groupID, content, message.ID.String(), message.CreatedAt.Format("2006-01-02 15:04:05"), user.ID.String()))
-
-		}
-
-	} else {
-		// Direct message
-		s.hub.Broadcast <- []byte(fmt.Sprintf(`{"type": "new_message", "sender_id": "%s", "receiver_id": "%s", "content": "%s", "message_id": "%s", "created_at": "%s"}`, senderID, receiverID, content, message.ID.String(), message.CreatedAt.Format("2006-01-02 15:04:05")))
+	} else if receiverUUID != nil {
+		msgData["receiver_id"] = receiverID
+		msgBytes, _ := json.Marshal(msgData)
+		s.hub.Broadcast <- msgBytes // Send to specific user
 	}
 
 	return nil

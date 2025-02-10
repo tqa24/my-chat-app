@@ -11,7 +11,7 @@ type Hub struct {
 	// Registered clients.  Key is the UserID.
 	Clients map[string]*Client
 
-	// Inbound messages from the clients.
+	// Inbound messages from the clients.  DEPRECATED.
 	Broadcast chan []byte
 
 	// Register requests from the clients.
@@ -26,14 +26,13 @@ type Hub struct {
 
 func NewHub() *Hub {
 	return &Hub{
-		Broadcast:  make(chan []byte),
+		Broadcast:  make(chan []byte), // Keep this for now, but it's deprecated
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 		Clients:    make(map[string]*Client),
 		Groups:     make(map[string]map[string]bool), // Initialize Groups
 	}
 }
-
 func (h *Hub) Run() {
 	for {
 		select {
@@ -54,41 +53,47 @@ func (h *Hub) Run() {
 					}
 				}
 			}
-		case message := <-h.Broadcast:
+		case message := <-h.Broadcast: //Handle broadcast
+			// Check if it's a group message by attempting to unmarshal it and checking for group_id
 			var msg map[string]interface{}
+			//Try to unmarshal
 			if err := json.Unmarshal(message, &msg); err == nil {
+				//Check group_id
 				if groupID, ok := msg["group_id"].(string); ok && groupID != "" {
-					log.Printf("Broadcasting group message to group %s", groupID)
 					// Group message: send only to members of the group
 					if members, ok := h.Groups[groupID]; ok {
-						log.Printf("Found %d members in group %s", len(members), groupID)
 						for userID := range members {
 							if client, ok := h.Clients[userID]; ok {
 								select {
-								case client.Send <- message:
-									log.Printf("Sent message to user %s", userID)
+								case client.Send <- message: // Send to the client
 								default:
+									// If the client's send channel is full, assume they're disconnected.
 									close(client.Send)
 									delete(h.Clients, client.UserID)
+									// Remove from group as well
 									delete(members, userID)
-									log.Printf("Removed inactive user %s from group", userID)
 								}
 							}
 						}
-					} else {
-						log.Printf("No members found for group %s", groupID)
+						// If the group is now empty, delete it
+						if len(members) == 0 {
+							delete(h.Groups, groupID)
+						}
 					}
-					continue
-				}
-			}
-			// Default case (direct message, or malformed group message): broadcast to all
-			for _, client := range h.Clients {
-				select {
-				case client.Send <- message:
-				default:
-					// If the client's send channel is full, assume they're disconnected.
-					close(client.Send)
-					delete(h.Clients, client.UserID)
+					continue // Important: Skip the default broadcast
+					// If not group message, it mean that this message is direct message
+				} else {
+					// Get receiverID from message
+					if receiverID, ok := msg["receiver_id"].(string); ok && receiverID != "" {
+						if client, ok := h.Clients[receiverID]; ok { // Check client exist
+							select {
+							case client.Send <- message:
+							default:
+								close(client.Send)
+								delete(h.Clients, receiverID)
+							}
+						}
+					}
 				}
 			}
 		}

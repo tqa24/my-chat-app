@@ -9,18 +9,14 @@
       <!-- Chatting with a User -->
       <div v-if="selectedUser">
         <h2>Chatting with {{ selectedUser.username }}</h2>
-        <ChatMessages />
+        <ChatMessages :messages="filteredMessages"/> <!--Pass filter message-->
         <ChatInput :receiverID="selectedUser.id" :groupID="null"/>
       </div>
       <!-- Chatting with a group -->
       <div v-else-if="selectedGroup">
         <h2>Chatting with {{ selectedGroup.name }}</h2>
-        <ChatMessages />
-        <ChatInput
-            v-if="selectedGroup"
-            :groupID="selectedGroup.id"
-            :receiverID="null"
-        />
+        <ChatMessages :messages="filteredMessages"/> <!--Pass filter message-->
+        <ChatInput :groupID="selectedGroup.id" :receiverID="null"/>
       </div>
     </div>
     <div v-else>
@@ -110,11 +106,11 @@ export default {
     const startChatWithGroup = async (group) => {
       console.log("Starting chat with group:", group);
       selectedGroup.value = {
-        id: group.ID,
-        name: group.Name
+        id: group.ID,    // Make sure to use capital ID
+        name: group.Name // Make sure to use capital Name
       };
-      selectedUser.value = null;
-      store.dispatch('clearMessages');
+      selectedUser.value = null; // Clear selected user
+      store.dispatch('clearMessages'); // Clear existing messages
 
       // Send join_group message when starting chat
       if (ws.value && group.ID) {
@@ -162,24 +158,13 @@ export default {
     };
     const connectWebSocket = () => {
       ws.value = new WebSocket(
-          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`
+          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`// Add ? here
       );
       store.commit("setWs", ws.value);
-
-      ws.value.onopen = async () => {
+      ws.value.onopen = () => {
         console.log("WebSocket connected");
         // Send "online_status" event
         ws.value.send(JSON.stringify({ type: "online_status" }));
-
-        // Join all user's groups after connecting
-        if (userGroups.value) {
-          userGroups.value.forEach(group => {
-            ws.value.send(JSON.stringify({
-              type: "join_group",
-              group_id: group.ID
-            }));
-          });
-        }
       };
 
       ws.value.onmessage = (event) => {
@@ -187,18 +172,9 @@ export default {
         console.log("Received:", data);
         // Handle different message types
         switch (data.type) {
-          case "new_message": {
-            // Add new message to the store
-            // Only show if have select user and match sender and receive
-            if(selectedUser.value && ((data.sender_id === selectedUser.value.id && data.receiver_id === currentUser.value.id) || (data.sender_id === currentUser.value.id && data.receiver_id === selectedUser.value.id) )){
-              store.dispatch("addMessage", data);
-            }
-            //Show message if it belong to selected group
-            if(selectedGroup.value && data.group_id === selectedGroup.value.id){
-              store.dispatch("addMessage", data)
-            }
+          case "new_message":
+            store.dispatch('addMessage', data);
             break;
-          }
           case "online_status": {
             // Update online users list
             if (data.user_id !== currentUser.value?.id) {//Add ?
@@ -269,7 +245,7 @@ export default {
       if (selectedUser.value) {
         try {
           const response = await axios.get(
-              `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}`
+              `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}` // Add ? here
           );
           store.dispatch('setMessages', response.data);
         } catch (error) {
@@ -285,7 +261,7 @@ export default {
           const response = await axios.get(
               `http://localhost:8080/groups/${selectedGroup.value.id}/messages`
           );
-          store.dispatch('setMessages', response.data);
+          store.dispatch("setMessages", response.data);
         } catch (error) {
           console.error("Failed to fetch group messages:", error);
         }
@@ -303,7 +279,25 @@ export default {
           user.username.toLowerCase().includes(searchQuery.value.toLowerCase())
       );
     });
-
+    // Computed property for filtered messages based on selected user/group
+    const filteredMessages = computed(() => {
+      if (selectedUser.value) {
+        // Filter messages for direct chat with the selected user
+        return store.getters.allMessages.filter(
+            (message) =>
+                (message.sender_id === currentUser.value?.id &&
+                    message.receiver_id === selectedUser.value.id) ||
+                (message.sender_id === selectedUser.value.id &&
+                    message.receiver_id === currentUser.value?.id)
+        );
+      } else if (selectedGroup.value) {
+        // Filter messages for the selected group
+        return store.getters.allMessages.filter(
+            (message) => message.group_id === selectedGroup.value.id
+        );
+      }
+      return []; // Return an empty array if no user or group is selected
+    });
     return {
       currentUser,
       ws,
@@ -318,7 +312,8 @@ export default {
       fetchGroupMessages,
       searchQuery, // Expose search query
       filteredUsers, // Expose filtered users
-      userGroups
+      userGroups,
+      filteredMessages
     };
   },
 };
