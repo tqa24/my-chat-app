@@ -55,33 +55,30 @@ func (h *Hub) Run() {
 				}
 			}
 		case message := <-h.Broadcast:
-			// Check if it's a group message by attempting to unmarshal it and checking for group_id
 			var msg map[string]interface{}
 			if err := json.Unmarshal(message, &msg); err == nil {
 				if groupID, ok := msg["group_id"].(string); ok && groupID != "" {
+					log.Printf("Broadcasting group message to group %s", groupID)
 					// Group message: send only to members of the group
 					if members, ok := h.Groups[groupID]; ok {
+						log.Printf("Found %d members in group %s", len(members), groupID)
 						for userID := range members {
 							if client, ok := h.Clients[userID]; ok {
 								select {
-								case client.Send <- message: // Send to the client
+								case client.Send <- message:
+									log.Printf("Sent message to user %s", userID)
 								default:
-									// If the client's send channel is full, assume they're disconnected.
 									close(client.Send)
 									delete(h.Clients, client.UserID)
-									// Remove from group as well
 									delete(members, userID)
+									log.Printf("Removed inactive user %s from group", userID)
 								}
 							}
 						}
-						// If the group is now empty, delete it
-						if len(members) == 0 {
-							delete(h.Groups, groupID)
-						}
 					} else {
-						log.Printf("No group")
+						log.Printf("No members found for group %s", groupID)
 					}
-					continue // Important: Skip the default broadcast
+					continue
 				}
 			}
 			// Default case (direct message, or malformed group message): broadcast to all

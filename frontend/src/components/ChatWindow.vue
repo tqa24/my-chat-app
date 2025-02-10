@@ -108,15 +108,23 @@ export default {
 
     // --- Group Selection ---
     const startChatWithGroup = async (group) => {
-      console.log("Starting chat with group:", group); // Add logging
+      console.log("Starting chat with group:", group);
       selectedGroup.value = {
-        id: group.ID,    // Make sure to use capital ID
-        name: group.Name // Make sure to use capital Name
+        id: group.ID,
+        name: group.Name
       };
-      selectedUser.value = null; // Clear selected user
-      store.dispatch('clearMessages'); // Clear existing messages
+      selectedUser.value = null;
+      store.dispatch('clearMessages');
 
-      if (group.ID) { // Verify we have a valid ID before fetching
+      // Send join_group message when starting chat
+      if (ws.value && group.ID) {
+        ws.value.send(JSON.stringify({
+          type: "join_group",
+          group_id: group.ID
+        }));
+      }
+
+      if (group.ID) {
         await fetchGroupMessages();
       } else {
         console.error("Invalid group ID");
@@ -154,13 +162,24 @@ export default {
     };
     const connectWebSocket = () => {
       ws.value = new WebSocket(
-          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`// Add ? here
+          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`
       );
       store.commit("setWs", ws.value);
-      ws.value.onopen = () => {
+
+      ws.value.onopen = async () => {
         console.log("WebSocket connected");
         // Send "online_status" event
         ws.value.send(JSON.stringify({ type: "online_status" }));
+
+        // Join all user's groups after connecting
+        if (userGroups.value) {
+          userGroups.value.forEach(group => {
+            ws.value.send(JSON.stringify({
+              type: "join_group",
+              group_id: group.ID
+            }));
+          });
+        }
       };
 
       ws.value.onmessage = (event) => {

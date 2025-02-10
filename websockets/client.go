@@ -106,6 +106,11 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 
 		case "read_message": // Handle message read status
 			c.Hub.Broadcast <- []byte(`{"type": "read_message", "message_id": "` + wsMessage.MessageID + `", "read_by": "` + c.UserID + `"}`)
+
+		case "join_group":
+			// Add the client to the group
+			c.Hub.AddClientToGroup(c.UserID, wsMessage.GroupID)
+			log.Printf("Client %s joined group %s", c.UserID, wsMessage.GroupID)
 		}
 	}
 }
