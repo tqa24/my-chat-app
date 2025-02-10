@@ -168,64 +168,73 @@ export default {
       };
 
       ws.value.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        console.log("Received:", data);
-        // Handle different message types
-        switch (data.type) {
-          case "new_message":
-            store.dispatch('addMessage', data);
-            break;
-          case "online_status": {
-            // Update online users list
-            if (data.user_id !== currentUser.value?.id) {//Add ?
-              //Find in user list
-              const userIndex = usersOnline.value.findIndex(u => u.id === data.user_id)
-              if(userIndex !== -1){
-                const updatedUsers = [...usersOnline.value];
-                updatedUsers[userIndex].status = "online"
-                store.dispatch("setUsersOnline", updatedUsers);
-              }
+        try {
+          const data = JSON.parse(event.data);
+          console.log("Received:", data);
+
+          // Handle different message types
+          switch (data.type) {
+            case "new_message": {
+              store.dispatch('addMessage', data);
+              break;
             }
 
-            break;
-          }
-          case "offline_status": {
-            // Update users online
-            const currentUsers = store.getters.getUsersOnline;
-            const index = currentUsers.findIndex((u) => u.id === data.user_id);
-            if (index !== -1) {
-              const newUsers = [...currentUsers];
-              newUsers[index].status = "offline"
-              store.dispatch("setUsersOnline", newUsers);
-            }
-            break;
-          }
-          case "typing": {
-            // Add typing user to the store (if it's not the current user)
-            if (data.sender_id !== currentUser.value?.id) {//Add ?
-              //Find sender from user online
-              const sender = usersOnline.value.find(u => u.id === data.sender_id)
-              if(sender){
-                store.dispatch("addTypingUser", sender.username); // Or use sender's username
+            case "online_status": {
+              if (data.user_id !== currentUser.value?.id) {
+                const userIndex = usersOnline.value.findIndex(u => u.id === data.user_id);
+                if (userIndex !== -1) {
+                  const updatedUsers = [...usersOnline.value];
+                  updatedUsers[userIndex].status = "online";
+                  store.dispatch("setUsersOnline", updatedUsers);
+                }
               }
+              break;
             }
-            break;
-          }
-          case "stop_typing": {
-            // Remove typing user from the store and use username
-            if (data.sender_id !== currentUser.value?.id) {
-              //Find sender from user online
-              const sender = usersOnline.value.find(u => u.id === data.sender_id)
-              if(sender){
-                store.dispatch("removeTypingUser", sender.username);
+
+            case "offline_status": {
+              const currentUsers = store.getters.getUsersOnline;
+              const index = currentUsers.findIndex((u) => u.id === data.user_id);
+              if (index !== -1) {
+                const newUsers = [...currentUsers];
+                newUsers[index].status = "offline";
+                store.dispatch("setUsersOnline", newUsers);
               }
+              break;
             }
-            break;
+
+            case "typing": {
+              if (data.sender_id !== currentUser.value?.id) {
+                const sender = usersOnline.value.find(u => u.id === data.sender_id);
+                if (sender) {
+                  store.dispatch("addTypingUser", sender.username);
+                }
+              }
+              break;
+            }
+
+            case "stop_typing": {
+              if (data.sender_id !== currentUser.value?.id) {
+                const sender = usersOnline.value.find(u => u.id === data.sender_id);
+                if (sender) {
+                  store.dispatch("removeTypingUser", sender.username);
+                }
+              }
+              break;
+            }
+
+            case "read_message": {
+              // Handle message read status
+              break;
+            }
+
+            default: {
+              console.log("Unhandled message type:", data.type);
+              break;
+            }
           }
-          case "read_message": {
-            // Handle message read status (update your message objects)
-            break;
-          }
+        } catch (error) {
+          console.error("Error parsing WebSocket message:", error);
+          console.log("Raw message:", event.data);
         }
       };
 
