@@ -93,6 +93,17 @@ func (h *Hub) Run() {
 								delete(h.Clients, receiverID)
 							}
 						}
+						// Also send back to sender
+						if senderID, ok := msg["sender_id"].(string); ok && senderID != "" {
+							if client, ok := h.Clients[senderID]; ok {
+								select {
+								case client.Send <- message:
+								default:
+									close(client.Send)
+									delete(h.Clients, senderID)
+								}
+							}
+						}
 					}
 				}
 			}
