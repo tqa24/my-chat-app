@@ -38,8 +38,30 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.Register:
 			h.Clients[client.UserID] = client // Register by UserID
+			// Broadcast online status when client registers
+			statusMsg := []byte(`{"type": "online_status", "user_id": "` + client.UserID + `"}`)
+			for _, c := range h.Clients {
+				select {
+				case c.Send <- statusMsg:
+				default:
+					close(c.Send)
+					delete(h.Clients, c.UserID)
+				}
+			}
+			log.Printf("Client registered: %s", client.UserID)
+
 		case client := <-h.Unregister:
 			if _, ok := h.Clients[client.UserID]; ok {
+				// Broadcast offline status before removing client
+				statusMsg := []byte(`{"type": "offline_status", "user_id": "` + client.UserID + `"}`)
+				for _, c := range h.Clients {
+					select {
+					case c.Send <- statusMsg:
+					default:
+						close(c.Send)
+						delete(h.Clients, c.UserID)
+					}
+				}
 				delete(h.Clients, client.UserID)
 				close(client.Send)
 				// Remove the client from all groups
@@ -52,12 +74,29 @@ func (h *Hub) Run() {
 						}
 					}
 				}
+				log.Printf("Client unregistered: %s", client.UserID)
 			}
 		case message := <-h.Broadcast: //Handle broadcast
 			// Check if it's a group message by attempting to unmarshal it and checking for group_id
 			var msg map[string]interface{}
 			//Try to unmarshal
 			if err := json.Unmarshal(message, &msg); err == nil {
+				msgType, _ := msg["type"].(string)
+
+				// Handle status messages differently
+				if msgType == "online_status" || msgType == "offline_status" {
+					// Broadcast status to all clients
+					for _, client := range h.Clients {
+						select {
+						case client.Send <- message:
+						default:
+							close(client.Send)
+							delete(h.Clients, client.UserID)
+						}
+					}
+					continue
+				}
+
 				//Check group_id
 				if groupID, ok := msg["group_id"].(string); ok && groupID != "" {
 					// Group message: send only to members of the group

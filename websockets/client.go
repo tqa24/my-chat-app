@@ -51,6 +51,10 @@ type WebSocketMessage struct {
 // ReadPump pumps messages from the websocket connection to the hub.
 func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 	defer func() {
+		// When client disconnects, send offline status before unregistering
+		offlineMsg := []byte(`{"type": "offline_status", "user_id": "` + c.UserID + `"}`)
+		c.Hub.Broadcast <- offlineMsg
+
 		c.Hub.Unregister <- c
 		c.Conn.Close()
 	}()
@@ -98,11 +102,13 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 			c.Hub.Broadcast <- message // Just forward the original message
 		case "online_status":
 			// Handle user coming online
-			c.Hub.Broadcast <- []byte(`{"type": "online_status", "user_id": "` + c.UserID + `", "status": "online"}`)
+			statusMsg := []byte(`{"type": "online_status", "user_id": "` + c.UserID + `"}`)
+			c.Hub.Broadcast <- statusMsg
 
 		case "offline_status": // Handle user going offline
 			// You might want to store last seen time here
-			c.Hub.Broadcast <- []byte(`{"type": "offline_status", "user_id": "` + c.UserID + `"}`)
+			statusMsg := []byte(`{"type": "offline_status", "user_id": "` + c.UserID + `"}`)
+			c.Hub.Broadcast <- statusMsg
 
 		case "read_message": // Handle message read status
 			c.Hub.Broadcast <- []byte(`{"type": "read_message", "message_id": "` + wsMessage.MessageID + `", "read_by": "` + c.UserID + `"}`)
