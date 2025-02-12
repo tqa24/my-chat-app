@@ -54,30 +54,55 @@ func (h *GroupHandler) GetGroup(c *gin.Context) {
 	c.JSON(http.StatusOK, group)
 }
 
+// Join with group ID
 func (h *GroupHandler) JoinGroup(c *gin.Context) {
 	groupID := c.Param("id")
-	// userID := c.GetString("userID") // Get user ID from JWT middleware -- REMOVE THIS
 	var req struct {
-		UserID string `json:"user_id"` // Get user_id from the request body
+		UserID string `json:"user_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
 		return
 	}
-	userID := req.UserID // Get the user_id from the request
-
+	userID := req.UserID
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-
 	err := h.groupService.JoinGroup(groupID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Joined group successfully"})
+}
+
+// Join with group Code
+func (h *GroupHandler) JoinGroupByCode(c *gin.Context) {
+	var req struct {
+		Code   string `json:"code"`
+		UserID string `json:"user_id"` // Temporary: Get user ID from request
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
+		return
+	}
+
+	// userID := c.GetString("userID") // TODO: Replace with JWT
+	userID := req.UserID
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	group, err := h.groupService.JoinGroupByCode(req.Code, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Return the group information.  This is important for the frontend.
+	c.JSON(http.StatusOK, gin.H{"message": "Joined group successfully", "group": group})
 }
 
 func (h *GroupHandler) LeaveGroup(c *gin.Context) {

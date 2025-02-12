@@ -2,14 +2,15 @@ import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import LoginView from '../views/LoginView.vue';
 import RegisterView from '../views/RegisterView.vue';
-import CreateGroup from '../components/CreateGroup.vue'; // Import the component
+import CreateGroup from '../components/CreateGroup.vue';
+import JoinGroupByCode from '../components/JoinGroupByCode.vue';
 
 const routes = [
     {
         path: '/',
         name: 'home',
         component: HomeView,
-        meta: { requiresAuth: true },
+        meta: { requiresAuth: true }, // Protect this route
     },
     {
         path: '/login',
@@ -27,6 +28,12 @@ const routes = [
         component: CreateGroup, // Use the component
         meta: { requiresAuth: true }, // Protect this route
     },
+    {
+        path: '/join-group', // Add this route for joining by code
+        name: 'join-group',
+        component: JoinGroupByCode,
+        meta: { requiresAuth: true },
+    }
 ];
 
 const router = createRouter({
@@ -35,13 +42,12 @@ const router = createRouter({
 });
 
 router.beforeEach((to, from, next) => {
-    const token = localStorage.getItem('token');
-    const isLoggedIn = !!token; // Convert token to boolean (true if exists, false if not)
-
+    const isLoggedIn = localStorage.getItem('user');
     if (to.matched.some(record => record.meta.requiresAuth) && !isLoggedIn) {
-        next('/login'); // Redirect to login if not authenticated
+        next('/login');
     } else {
         next();
     }
 });
+
 export default router;

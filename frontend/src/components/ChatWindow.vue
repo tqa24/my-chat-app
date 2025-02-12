@@ -9,14 +9,19 @@
       <!-- Chatting with a User -->
       <div v-if="selectedUser">
         <h2>Chatting with {{ selectedUser.username }}</h2>
-        <ChatMessages :messages="filteredMessages"/> <!--Pass filter message-->
-        <ChatInput :receiverID="selectedUser.id" :groupID="null"/>
+        <ChatMessages :messages="filteredMessages" />
+        <ChatInput :receiverID="selectedUser.id" :groupID="null" />
       </div>
       <!-- Chatting with a group -->
       <div v-else-if="selectedGroup">
-        <h2>Chatting with {{ selectedGroup.name }}</h2>
-        <ChatMessages :messages="filteredMessages"/> <!--Pass filter message-->
-        <ChatInput :groupID="selectedGroup.id" :receiverID="null"/>
+        <h2>
+          Chatting with {{ selectedGroup.name }}
+          <!-- Only show copy code button when a group is selected -->
+          <button @click.stop="copyCode(selectedGroup.code)">Copy Code</button>
+          <span v-if="copyMessage" class="copy-message">{{ copyMessage }}</span>
+        </h2>
+        <ChatMessages :messages="filteredMessages" />
+        <ChatInput :groupID="selectedGroup.id" :receiverID="null" />
       </div>
     </div>
     <div v-else>
@@ -33,6 +38,8 @@
         >
           <span :class="{ 'online-dot': user.status === 'online' }"></span>
           {{ user.username }}
+          <!-- Add unread indicator -->
+          <span v-if="getUnreadCount(user.id) > 0" class="unread-count">{{ getUnreadCount(user.id) }}</span>
         </div>
       </div>
       <!-- Group list -->
@@ -40,6 +47,10 @@
         <h3>Groups</h3>
         <div v-for="group in userGroups" :key="group.ID" class="group-item" @click="startChatWithGroup(group)">
           <span>{{ group.Name }}</span>
+          <!-- Add unread indicator -->
+          <span v-if="getUnreadCount(group.ID) > 0" class="unread-count">{{
+              getUnreadCount(group.ID)
+            }}</span>
         </div>
       </div>
     </div>
@@ -57,8 +68,8 @@
 <script>
 import ChatMessages from "./ChatMessages.vue";
 import ChatInput from "./ChatInput.vue";
-import { computed, ref, onMounted, onBeforeUnmount } from "vue";
-import { useStore } from "vuex";
+import {computed, ref, onMounted, onBeforeUnmount} from "vue";
+import {useStore} from "vuex";
 import axios from "axios";
 
 export default {
@@ -77,14 +88,13 @@ export default {
     const typingUsers = computed(() => store.getters.typingUsers);
     const searchQuery = ref(""); // Add search query
     const userGroups = ref([]); // To store user's groups
+    const copyMessage = ref("");
 
     onMounted(async () => {
       if (currentUser.value) {
         connectWebSocket();
         await fetchAllUsers(); // Fetch all users when component mounts
-        await fetchUserGroups(); // Fetch user's groups  //Add await
-        console.log("userGroups after fetch:", userGroups.value); // Add this line
-
+        await fetchUserGroups(); // Fetch user's groups
       }
     });
 
@@ -99,19 +109,20 @@ export default {
       selectedUser.value = user;
       selectedGroup.value = null; // Clear selected group
       store.dispatch("clearMessages"); // Clear previous messages
+      store.dispatch('markAsRead', user.id); // Clear unread count
       await fetchMessages(); // Fetch messages for the new conversation
     };
 
     // --- Group Selection ---
     const startChatWithGroup = async (group) => {
-      console.log("Starting chat with group:", group);
       selectedGroup.value = {
-        id: group.ID,    // Make sure to use capital ID
-        name: group.Name // Make sure to use capital Name
+        id: group.ID,
+        name: group.Name,
+        code: group.Code, // Store the code
       };
       selectedUser.value = null; // Clear selected user
       store.dispatch('clearMessages'); // Clear existing messages
-
+      store.dispatch('markAsRead', group.ID); // Clear unread count
       // Send join_group message when starting chat
       if (ws.value && group.ID) {
         ws.value.send(JSON.stringify({
@@ -148,17 +159,17 @@ export default {
     const fetchUserGroups = async () => {
       try {
         const response = await axios.get(
-            `http://localhost:8080/users/${currentUser.value?.id}/groups` // Use ? here
+            `http://localhost:8080/users/${currentUser.value?.id}/groups`
         );
         userGroups.value = response.data;
-        console.log("User groups:", userGroups.value); // Add this line!
       } catch (error) {
         console.error("Failed to fetch user's groups:", error);
       }
     };
+
     const connectWebSocket = () => {
       ws.value = new WebSocket(
-          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`// Add ? here
+          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`
       );
       store.commit("setWs", ws.value);
       ws.value.onopen = () => {
@@ -174,45 +185,61 @@ export default {
 
           // Handle different message types
           switch (data.type) {
-            case "new_message": {
+            case "new_message":
               store.dispatch('addMessage', data);
+              // Increment unread count if NOT the sender AND NOT the selected conversation
+              if (data.sender_id !== currentUser.value?.id) {
+                if (data.group_id && (!selectedGroup.value || data.group_id !== selectedGroup.value.id)) {
+                  store.dispatch('incrementUnreadCount', data.group_id);
+                } else if (data.receiver_id && (!selectedUser.value || data.sender_id !== selectedUser.value.id)) {
+                  store.dispatch('incrementUnreadCount', data.sender_id); // Use sender_id for direct messages
+                }
+              }
               break;
-            }
 
-            case "online_status": {
+            case "online_status":
+              // Update online users list
               if (data.user_id !== currentUser.value?.id) {
                 const userIndex = usersOnline.value.findIndex(u => u.id === data.user_id);
                 if (userIndex !== -1) {
+                  // User exists, update status
                   const updatedUsers = [...usersOnline.value];
                   updatedUsers[userIndex].status = "online";
                   store.dispatch("setUsersOnline", updatedUsers);
+                } else {
+                  // User not in list, fetch and add
+                  axios.get(`http://localhost:8080/profile?userID=${data.user_id}`).then(res => {
+                    const newUser = { id: res.data.id, username: res.data.username, status: 'online' };
+                    store.dispatch('setUsersOnline', [...usersOnline.value, newUser]);
+                  }).catch(err => console.error("Error fetching user profile", err));
                 }
               }
               break;
-            }
 
-            case "offline_status": {
-              const currentUsers = store.getters.getUsersOnline;
-              const index = currentUsers.findIndex((u) => u.id === data.user_id);
-              if (index !== -1) {
-                const newUsers = [...currentUsers];
-                newUsers[index].status = "offline";
-                store.dispatch("setUsersOnline", newUsers);
+            case "offline_status":
+              // Update users online
+              if (data.user_id !== currentUser.value?.id) {
+                const userIndex = usersOnline.value.findIndex(u => u.id === data.user_id);
+                if (userIndex !== -1) {
+                  const newUsers = [...usersOnline.value];
+                  newUsers[userIndex].status = "offline"
+                  store.dispatch("setUsersOnline", newUsers);
+                }
               }
               break;
-            }
 
-            case "typing": {
+            case "typing":
+              // Add typing user to the store (if it's not the current user)
               if (data.sender_id !== currentUser.value?.id) {
                 const sender = usersOnline.value.find(u => u.id === data.sender_id);
                 if (sender) {
-                  store.dispatch("addTypingUser", sender.username);
+                  store.dispatch('addTypingUser', sender.username);
                 }
               }
               break;
-            }
 
-            case "stop_typing": {
+            case "stop_typing":
+              // Remove typing user from the store by username
               if (data.sender_id !== currentUser.value?.id) {
                 const sender = usersOnline.value.find(u => u.id === data.sender_id);
                 if (sender) {
@@ -220,10 +247,9 @@ export default {
                 }
               }
               break;
-            }
 
             case "read_message": {
-              // Handle message read status
+              // Handle message read status (update your message objects)
               break;
             }
 
@@ -254,7 +280,7 @@ export default {
       if (selectedUser.value) {
         try {
           const response = await axios.get(
-              `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}` // Add ? here
+              `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}`
           );
           store.dispatch('setMessages', response.data);
         } catch (error) {
@@ -270,7 +296,7 @@ export default {
           const response = await axios.get(
               `http://localhost:8080/groups/${selectedGroup.value.id}/messages`
           );
-          store.dispatch("setMessages", response.data);
+          store.dispatch('setMessages', response.data);
         } catch (error) {
           console.error("Failed to fetch group messages:", error);
         }
@@ -307,6 +333,20 @@ export default {
       }
       return []; // Return an empty array if no user or group is selected
     });
+    const copyCode = (code) => {
+      navigator.clipboard.writeText(code)
+          .then(() => {
+            // Set the message and clear it after 2 seconds
+            copyMessage.value = 'Code copied to clipboard!';
+            setTimeout(() => {
+              copyMessage.value = '';
+            }, 2000);
+          })
+          .catch(err => {
+            console.error('Failed to copy code: ', err);
+            // Handle the error (e.g., show an error message to the user)
+          });
+    };
     return {
       currentUser,
       ws,
@@ -319,10 +359,13 @@ export default {
       typingUsers,
       fetchMessages,
       fetchGroupMessages,
-      searchQuery, // Expose search query
-      filteredUsers, // Expose filtered users
+      searchQuery,
+      filteredUsers,
       userGroups,
-      filteredMessages
+      filteredMessages,
+      copyCode,
+      copyMessage,
+      getUnreadCount: store.getters.getUnreadCount,
     };
   },
 };
@@ -332,16 +375,18 @@ export default {
 .chat-container {
   display: flex;
   flex-direction: column;
-  height: 400px; /* Or whatever height you want */
+  height: 400px;
 }
 
 .chat-messages {
-  flex-grow: 1; /* Allow messages to take up available space */
-  overflow-y: auto; /* Add scrolling */
+  flex-grow: 1;
+  overflow-y: auto;
 }
+
 .user-list {
   display: flex;
   flex-wrap: wrap;
+  margin-top: 20px; /* Add some space above the user list */
 }
 
 .user-item {
@@ -352,27 +397,9 @@ export default {
   cursor: pointer;
   display: flex;
   align-items: center;
+  position: relative; /* Needed for absolute positioning of .unread-count */
 }
-.online-dot {
-  width: 10px;
-  height: 10px;
-  background-color: green;
-  border-radius: 50%;
-  margin-right: 5px;
-  display: inline-block;
-}
-.typing-indicator {
-  font-style: italic;
-  color: gray;
-  margin-top: 5px;
-}
-/* Add styles for profile info */
-.profile-info {
-  padding: 10px;
-  border-bottom: 1px solid #ccc;
-  margin-bottom: 10px;
-}
-/* Style for group list */
+
 .group-list {
   margin-top: 20px;
   border-top: 1px solid #ccc;
@@ -387,5 +414,44 @@ export default {
   cursor: pointer;
   display: flex;
   align-items: center;
+  position: relative; /* Needed for absolute positioning of .unread-count */
+}
+
+.online-dot {
+  width: 10px;
+  height: 10px;
+  background-color: green;
+  border-radius: 50%;
+  margin-right: 5px;
+  display: inline-block;
+}
+
+.typing-indicator {
+  font-style: italic;
+  color: gray;
+  margin-top: 5px;
+}
+
+/* Add styles for profile info */
+.profile-info {
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 10px;
+}
+
+/* Style for the unread count indicator */
+.unread-count {
+  background-color: red;
+  color: white;
+  border-radius: 50%;
+  padding: 2px 6px;
+  font-size: 12px;
+  position: absolute; /* Position absolutely within the user item */
+  top: 5px; /* Adjust as needed */
+  right: 5px; /* Adjust as needed */
+}
+.copy-message {
+  margin-left: 10px;
+  color: green;
 }
 </style>

@@ -8,6 +8,7 @@ export default createStore({
         typingUsers: [], // Type user
         ws: null, // Add WebSocket
         selectedGroup: null,
+        unreadCounts: {}, // New state for unread counts
     },
     mutations: {
         setUser(state, user) {
@@ -40,7 +41,21 @@ export default createStore({
         },
         setWs(state, wsInstance) {
             state.ws = wsInstance;
-        }
+        },
+        setSelectedGroup(state, group) {
+            state.selectedGroup = group;
+        },
+        // --- New Mutations for Unread Counts ---
+        setUnreadCount(state, { id, count }) {
+            state.unreadCounts = { ...state.unreadCounts, [id]: count };
+        },
+        incrementUnreadCount(state, id) {
+            const currentCount = state.unreadCounts[id] || 0; // Get current count, default to 0
+            state.unreadCounts = { ...state.unreadCounts, [id]: currentCount + 1 };
+        },
+        clearUnreadCount(state, id) {
+            state.unreadCounts = { ...state.unreadCounts, [id]: 0 };
+        },
     },
     actions: {
         login({ commit }, user) {
@@ -55,7 +70,7 @@ export default createStore({
             // Clear the Authorization header on logout
             delete axios.defaults.headers.common['Authorization'];
             commit('setUser', null);
-
+            localStorage.removeItem('token'); // Remove the token on logout
             //Close websocket
             if (this.state.ws) {
                 this.state.ws.close();
@@ -82,11 +97,21 @@ export default createStore({
         setWs({ commit }, wsInstance) {
             commit('setWs', wsInstance);
         },
+        setSelectedGroup({ commit }, group) {
+            commit('setSelectedGroup', group);
+        },
+        // --- New Actions for Unread Counts ---
+        markAsRead({ commit }, id) {
+            commit('clearUnreadCount', id);
+        },
     },
     getters: {
         currentUser: state => state.user,
         allMessages: state => state.messages,
         getUsersOnline: state => state.usersOnline,
         typingUsers: state => state.typingUsers,
+        getUnreadCount: state => id => {
+            return state.unreadCounts[id] || 0; // Return count or 0 if not found
+        },
     },
 });

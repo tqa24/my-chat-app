@@ -1,13 +1,15 @@
-// services/group.go
 package services
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
 	"my-chat-app/models"
 	"my-chat-app/repositories"
 	"my-chat-app/websockets"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -15,6 +17,7 @@ import (
 type GroupService interface {
 	CreateGroup(name string, creatorID string) (*models.Group, error)
 	JoinGroup(groupID string, userID string) error
+	JoinGroupByCode(code string, userID string) (*models.Group, error) // Add this
 	LeaveGroup(groupID string, userID string) error
 	GetGroupByID(id string) (*models.Group, error)
 	ListGroupsForUser(userID string) ([]*models.Group, error)
@@ -39,8 +42,14 @@ func (s *groupService) CreateGroup(name string, creatorID string) (*models.Group
 		return nil, fmt.Errorf("invalid creator ID: %w", err)
 	}
 
+	// Generate a unique code for the group
+	code, err := generateUniqueCode() // Implement this function
+	if err != nil {
+		return nil, fmt.Errorf("error generating group code: %w", err)
+	}
 	group := &models.Group{
 		Name:  name,
+		Code:  code,             // Set the code
 		Users: []*models.User{}, // Initialize the Users slice
 	}
 
@@ -67,12 +76,38 @@ func (s *groupService) CreateGroup(name string, creatorID string) (*models.Group
 		s.groupRepo.Delete(group.ID.String())
 		return nil, fmt.Errorf("error adding creator to group: %w", err)
 	}
-
-	// Add user to websocket hub
+	//Add creator to Hub
 	s.hub.AddClientToGroup(creator.ID.String(), group.ID.String())
 	return group, nil
 }
 
+// Add JoinGroupByCode function
+func (s *groupService) JoinGroupByCode(code string, userID string) (*models.Group, error) {
+	group, err := s.groupRepo.GetByCode(code) // Implement GetByCode in the repository
+	if err != nil {
+		return nil, fmt.Errorf("error finding group by code: %w", err)
+	}
+	if group == nil {
+		return nil, errors.New("group not found")
+	}
+
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("error finding user: %w", err)
+	}
+
+	if user == nil {
+		return nil, errors.New("user not found")
+	}
+
+	err = s.groupRepo.AddUser(group, user)
+	if err != nil {
+		return nil, fmt.Errorf("error adding user to group: %w", err)
+	}
+	s.hub.AddClientToGroup(userID, group.ID.String())
+
+	return group, nil
+}
 func (s *groupService) JoinGroup(groupID string, userID string) error {
 	group, err := s.groupRepo.GetByID(groupID)
 	if err != nil {
@@ -132,4 +167,14 @@ func (s *groupService) ListGroupsForUser(userID string) ([]*models.Group, error)
 
 func (s *groupService) GetAllGroups() ([]models.Group, error) {
 	return s.groupRepo.GetAll()
+}
+
+// Helper function to generate a unique code (you can improve this)
+func generateUniqueCode() (string, error) {
+	bytes := make([]byte, 6) // 6 bytes will result in 8 base64 characters
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return strings.ReplaceAll(base64.URLEncoding.EncodeToString(bytes), "_", ""), nil
+
 }

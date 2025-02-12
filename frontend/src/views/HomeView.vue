@@ -1,6 +1,7 @@
 <template>
   <div class="home">
     <router-link to="/create-group">Create Group</router-link>
+    <router-link to="/join-group">Join Group</router-link>
     <ChatWindow />
   </div>
 </template>

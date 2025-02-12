@@ -59,12 +59,13 @@ func main() {
 	r.POST("/messages", chatHandler.SendMessage)    // For send message
 	r.GET("/users", authHandler.GetAllUsers)
 	// Group routes
-	r.POST("/groups", groupHandler.CreateGroup)                // Create a new group
-	r.GET("/groups/:id", groupHandler.GetGroup)                // Get group details
-	r.POST("/groups/:id/join", groupHandler.JoinGroup)         // Join a group
-	r.POST("/groups/:id/leave", groupHandler.LeaveGroup)       // Leave a group
-	r.GET("/users/:id/groups", groupHandler.ListGroupsForUser) // List groups for a user
-	r.GET("/groups", groupHandler.GetAllGroups)
+	r.POST("/groups", groupHandler.CreateGroup)                     // Create a new group
+	r.GET("/groups/:id", groupHandler.GetGroup)                     // Get group details
+	r.POST("/groups/:id/join", groupHandler.JoinGroup)              // Join a group
+	r.POST("/groups/join-by-code", groupHandler.JoinGroupByCode)    // Join group by code
+	r.POST("/groups/:id/leave", groupHandler.LeaveGroup)            // Leave a group
+	r.GET("/users/:id/groups", groupHandler.ListGroupsForUser)      // List groups for a user
+	r.GET("/groups", groupHandler.GetAllGroups)                     // Get all groups
 	r.GET("/groups/:id/messages", chatHandler.GetGroupConversation) // For get group conversation
 
 	// Start the server
