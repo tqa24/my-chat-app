@@ -16,18 +16,21 @@
       <div v-else-if="selectedGroup">
         <div class="group-header">
           <h2>
-            {{ selectedGroup.name }}
-            <div class="group-code-container">
+            {{ selectedGroup.name }} </h2>
+          <div class="group-code-container">
       <span class="group-code" title="Share this code to invite others">
         Group Code: {{ selectedGroup.code }}
       </span>
-              <button class="copy-button" @click.stop="copyCode(selectedGroup.code)"
-                      title="Copy to clipboard">
-                Copy Code
-              </button>
-            </div>
-            <span v-if="copyMessage" class="copy-message">{{ copyMessage }}</span>
-          </h2>
+            <button class="copy-button" @click.stop="copyCode(selectedGroup.code)"
+                    title="Copy to clipboard">
+              Copy Code
+            </button>
+            <button class="leave-button" @click="confirmLeaveGroup"
+                    title="Leave this group">
+              Leave Group
+            </button>
+          </div>
+          <span v-if="copyMessage" class="copy-message">{{ copyMessage }}</span>
         </div>
         <ChatMessages :messages="filteredMessages"/>
         <ChatInput :groupID="selectedGroup.id" :receiverID="null"/>
@@ -79,6 +82,18 @@
       is typing...
     </div>
   </div>
+  <!-- Confirmation Modal -->
+  <div v-if="showLeaveModal" class="modal-overlay" @click="showLeaveModal = false">
+    <div class="modal-content" @click.stop>
+      <h3>Leave Group</h3>
+      <p>Are you sure you want to leave "{{ selectedGroup?.name }}"? This action cannot be undone.</p>
+      <div class="modal-buttons">
+        <button class="cancel" @click="showLeaveModal = false">Cancel</button>
+        <button class="confirm" @click="leaveGroup">Leave Group</button>
+      </div>
+    </div>
+  </div>
+
 </template>
 
 <script>
@@ -105,7 +120,44 @@ export default {
     const searchQuery = ref(""); // Add search query
     const userGroups = ref([]); // To store user's groups
     const copyMessage = ref("");
+    const showLeaveModal = ref(false);
+    const confirmLeaveGroup = () => {
+      showLeaveModal.value = true;
+    };
+    const leaveGroup = async () => {
+      try {
+        if (!selectedGroup.value || !currentUser.value) return;
 
+        await axios.post(`http://localhost:8080/groups/${selectedGroup.value.id}/leave`, {
+          user_id: currentUser.value.id
+        });
+
+        // Send leave group message through WebSocket
+        if (ws.value) {
+          ws.value.send(JSON.stringify({
+            type: "leave_group",
+            group_id: selectedGroup.value.id
+          }));
+        }
+
+        // Remove group from userGroups
+        userGroups.value = userGroups.value.filter(g => g.ID.toString() !== selectedGroup.value.id);
+
+        // Clear selected group
+        selectedGroup.value = null;
+
+        // Clear messages
+        store.dispatch('clearMessages');
+
+        // Show success message (optional)
+        alert('You have left the group successfully');
+      } catch (error) {
+        console.error('Failed to leave group:', error);
+        alert('Failed to leave group. Please try again.');
+      } finally {
+        showLeaveModal.value = false;
+      }
+    };
     onMounted(async () => {
       if (currentUser.value) {
         connectWebSocket();
@@ -448,6 +500,9 @@ export default {
       copyMessage,
       formatUnreadCount,
       getUnreadCount: (id) => store.getters.getUnreadCount(id),
+      showLeaveModal,
+      confirmLeaveGroup,
+      leaveGroup,
     };
   },
 };
@@ -555,6 +610,7 @@ export default {
   color: #28a745;
   font-weight: normal;
 }
+
 .group-header {
   padding: 15px;
   border-bottom: 1px solid #eee;
@@ -570,6 +626,7 @@ export default {
   gap: 10px;
   flex-wrap: wrap;
 }
+
 .group-code {
   font-size: 0.9em;
   color: #666;
@@ -579,11 +636,13 @@ export default {
   font-weight: normal;
   position: relative;
 }
+
 .group-code-container {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
+
 .group-code:hover::before {
   content: "Share this code to invite others";
   position: absolute;
@@ -597,11 +656,67 @@ export default {
   font-size: 0.8em;
   white-space: nowrap;
   pointer-events: none;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s;
 }
 
-.group-code:hover::before {
-  opacity: 1;
+.leave-button {
+  padding: 4px 12px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8em;
+  transition: background-color 0.2s;
+}
+
+.leave-button:hover {
+  background-color: #c82333;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modal-buttons button {
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+}
+
+.modal-buttons .cancel {
+  background-color: #6c757d;
+  color: white;
+}
+
+.modal-buttons .confirm {
+  background-color: #dc3545;
+  color: white;
 }
 </style>
