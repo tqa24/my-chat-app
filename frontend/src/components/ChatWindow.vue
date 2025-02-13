@@ -9,8 +9,8 @@
       <!-- Chatting with a User -->
       <div v-if="selectedUser">
         <h2>Chatting with {{ selectedUser.username }}</h2>
-        <ChatMessages :messages="filteredMessages" />
-        <ChatInput :receiverID="selectedUser.id" :groupID="null" />
+        <ChatMessages :messages="filteredMessages"/>
+        <ChatInput :receiverID="selectedUser.id" :groupID="null"/>
       </div>
       <!-- Chatting with a group -->
       <div v-else-if="selectedGroup">
@@ -20,14 +20,14 @@
           <button @click.stop="copyCode(selectedGroup.code)">Copy Code</button>
           <span v-if="copyMessage" class="copy-message">{{ copyMessage }}</span>
         </h2>
-        <ChatMessages :messages="filteredMessages" />
-        <ChatInput :groupID="selectedGroup.id" :receiverID="null" />
+        <ChatMessages :messages="filteredMessages"/>
+        <ChatInput :groupID="selectedGroup.id" :receiverID="null"/>
       </div>
     </div>
     <div v-else>
       <h2>Select user or group to chat</h2>
       <!-- Search input -->
-      <input v-model="searchQuery" placeholder="Search users..." />
+      <input v-model="searchQuery" placeholder="Search users..."/>
       <div class="user-list">
         <h3>Users</h3>
         <div
@@ -39,7 +39,9 @@
           <span :class="{ 'online-dot': user.status === 'online' }"></span>
           {{ user.username }}
           <!-- Add unread indicator -->
-          <span v-if="getUnreadCount(user.id) > 0" class="unread-count">{{ getUnreadCount(user.id) }}</span>
+          <span v-if="getUnreadCount(user.id) > 0" class="unread-count">
+    {{ formatUnreadCount(getUnreadCount(user.id)) }}
+  </span>
         </div>
       </div>
       <!-- Group list -->
@@ -48,9 +50,9 @@
         <div v-for="group in userGroups" :key="group.ID" class="group-item" @click="startChatWithGroup(group)">
           <span>{{ group.Name }}</span>
           <!-- Add unread indicator -->
-          <span v-if="getUnreadCount(group.ID) > 0" class="unread-count">{{
-              getUnreadCount(group.ID)
-            }}</span>
+          <span v-if="getUnreadCount(group.ID) > 0" class="unread-count">
+    {{ formatUnreadCount(getUnreadCount(group.ID)) }}
+  </span>
         </div>
       </div>
     </div>
@@ -68,9 +70,9 @@
 <script>
 import ChatMessages from "./ChatMessages.vue";
 import ChatInput from "./ChatInput.vue";
-import {computed, ref, onMounted, onBeforeUnmount} from "vue";
 import {useStore} from "vuex";
 import axios from "axios";
+import {computed, onBeforeUnmount, onMounted, ref} from "vue";
 
 export default {
   name: "ChatWindow",
@@ -109,7 +111,7 @@ export default {
       selectedUser.value = user;
       selectedGroup.value = null; // Clear selected group
       store.dispatch("clearMessages"); // Clear previous messages
-      store.dispatch('markAsRead', user.id); // Clear unread count
+      store.dispatch('markAsRead', user.id); // Mark messages as read
       await fetchMessages(); // Fetch messages for the new conversation
     };
 
@@ -118,12 +120,11 @@ export default {
       selectedGroup.value = {
         id: group.ID,
         name: group.Name,
-        code: group.Code, // Store the code
+        code: group.Code,
       };
       selectedUser.value = null; // Clear selected user
-      store.dispatch('clearMessages'); // Clear existing messages
-      store.dispatch('markAsRead', group.ID); // Clear unread count
-      // Send join_group message when starting chat
+      store.dispatch('clearMessages');
+      store.dispatch('markAsRead', group.ID); // Mark group messages as read
       if (ws.value && group.ID) {
         ws.value.send(JSON.stringify({
           type: "join_group",
@@ -133,9 +134,12 @@ export default {
 
       if (group.ID) {
         await fetchGroupMessages();
-      } else {
-        console.error("Invalid group ID");
       }
+    };
+
+    // Add format function for unread counts
+    const formatUnreadCount = (count) => {
+      return count > 9 ? '9+' : count;
     };
 
     // --- Fetch Users ---
@@ -175,7 +179,7 @@ export default {
       ws.value.onopen = () => {
         console.log("WebSocket connected");
         // Send "online_status" event
-        ws.value.send(JSON.stringify({ type: "online_status" }));
+        ws.value.send(JSON.stringify({type: "online_status"}));
       };
 
       ws.value.onmessage = (event) => {
@@ -183,16 +187,22 @@ export default {
           const data = JSON.parse(event.data);
           console.log("Received:", data);
 
-          // Handle different message types
           switch (data.type) {
             case "new_message":
               store.dispatch('addMessage', data);
-              // Increment unread count if NOT the sender AND NOT the selected conversation
+              // Only increment unread count if:
+              // 1. Not the sender
+              // 2. Not currently viewing this conversation
+              // 3. Message is new (not from history)
               if (data.sender_id !== currentUser.value?.id) {
-                if (data.group_id && (!selectedGroup.value || data.group_id !== selectedGroup.value.id)) {
-                  store.dispatch('incrementUnreadCount', data.group_id);
-                } else if (data.receiver_id && (!selectedUser.value || data.sender_id !== selectedUser.value.id)) {
-                  store.dispatch('incrementUnreadCount', data.sender_id); // Use sender_id for direct messages
+                if (data.group_id) {
+                  if (!selectedGroup.value || data.group_id !== selectedGroup.value.id) {
+                    store.dispatch('incrementUnreadCount', data.group_id);
+                  }
+                } else {
+                  if (!selectedUser.value || data.sender_id !== selectedUser.value.id) {
+                    store.dispatch('incrementUnreadCount', data.sender_id);
+                  }
                 }
               }
               break;
@@ -209,7 +219,7 @@ export default {
                 } else {
                   // User not in list, fetch and add
                   axios.get(`http://localhost:8080/profile?userID=${data.user_id}`).then(res => {
-                    const newUser = { id: res.data.id, username: res.data.username, status: 'online' };
+                    const newUser = {id: res.data.id, username: res.data.username, status: 'online'};
                     store.dispatch('setUsersOnline', [...usersOnline.value, newUser]);
                   }).catch(err => console.error("Error fetching user profile", err));
                 }
@@ -365,7 +375,8 @@ export default {
       filteredMessages,
       copyCode,
       copyMessage,
-      getUnreadCount: store.getters.getUnreadCount,
+      formatUnreadCount,
+      getUnreadCount: (id) => store.getters.getUnreadCount(id),
     };
   },
 };
@@ -443,13 +454,16 @@ export default {
 .unread-count {
   background-color: red;
   color: white;
-  border-radius: 50%;
-  padding: 2px 6px;
+  border-radius: 12px; /* Increased to look better with 9+ */
+  padding: 2px;
   font-size: 12px;
-  position: absolute; /* Position absolutely within the user item */
-  top: 5px; /* Adjust as needed */
-  right: 5px; /* Adjust as needed */
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  min-width: 18px; /* Ensure consistent width */
+  text-align: center;
 }
+
 .copy-message {
   margin-left: 10px;
   color: green;

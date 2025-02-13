@@ -11,4 +11,10 @@ const savedUser = localStorage.getItem('user');
 if (savedUser) {
     store.commit('setUser', JSON.parse(savedUser));
 }
+
+const savedUnreadCounts = localStorage.getItem('unreadCounts');
+if (savedUnreadCounts) {
+    store.state.unreadCounts = JSON.parse(savedUnreadCounts);
+}
+
 app.mount('#app')

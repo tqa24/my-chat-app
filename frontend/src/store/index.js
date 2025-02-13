@@ -8,7 +8,7 @@ export default createStore({
         typingUsers: [], // Type user
         ws: null, // Add WebSocket
         selectedGroup: null,
-        unreadCounts: {}, // New state for unread counts
+        unreadCounts: {}, // Store unread counts for users and groups
     },
     mutations: {
         setUser(state, user) {
@@ -48,13 +48,16 @@ export default createStore({
         // --- New Mutations for Unread Counts ---
         setUnreadCount(state, { id, count }) {
             state.unreadCounts = { ...state.unreadCounts, [id]: count };
+            localStorage.setItem('unreadCounts', JSON.stringify(state.unreadCounts));
         },
         incrementUnreadCount(state, id) {
-            const currentCount = state.unreadCounts[id] || 0; // Get current count, default to 0
+            const currentCount = state.unreadCounts[id] || 0;
             state.unreadCounts = { ...state.unreadCounts, [id]: currentCount + 1 };
+            localStorage.setItem('unreadCounts', JSON.stringify(state.unreadCounts));
         },
         clearUnreadCount(state, id) {
             state.unreadCounts = { ...state.unreadCounts, [id]: 0 };
+            localStorage.setItem('unreadCounts', JSON.stringify(state.unreadCounts));
         },
     },
     actions: {
@@ -101,6 +104,9 @@ export default createStore({
             commit('setSelectedGroup', group);
         },
         // --- New Actions for Unread Counts ---
+        incrementUnreadCount({ commit }, id) {
+            commit('incrementUnreadCount', id);
+        },
         markAsRead({ commit }, id) {
             commit('clearUnreadCount', id);
         },
