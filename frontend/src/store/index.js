@@ -51,13 +51,50 @@ export default createStore({
             localStorage.setItem('unreadCounts', JSON.stringify(state.unreadCounts));
         },
         incrementUnreadCount(state, id) {
-            const currentCount = state.unreadCounts[id] || 0;
-            state.unreadCounts = { ...state.unreadCounts, [id]: currentCount + 1 };
+            const stringId = id?.toString();
+            if (!stringId) {
+                console.warn('Attempted to increment unread count with invalid ID:', id);
+                return;
+            }
+
+            console.log('Incrementing unread count:', {
+                id: stringId,
+                currentCount: state.unreadCounts[stringId] || 0,
+                newCount: (state.unreadCounts[stringId] || 0) + 1
+            });
+
+            state.unreadCounts = {
+                ...state.unreadCounts,
+                [stringId]: (state.unreadCounts[stringId] || 0) + 1
+            };
+
             localStorage.setItem('unreadCounts', JSON.stringify(state.unreadCounts));
         },
         clearUnreadCount(state, id) {
-            state.unreadCounts = { ...state.unreadCounts, [id]: 0 };
+            const stringId = id?.toString();
+            if (!stringId) {
+                console.warn('Attempted to clear unread count with invalid ID:', id);
+                return;
+            }
+
+            console.log('Clearing unread count:', {
+                id: stringId,
+                previousCount: state.unreadCounts[stringId] || 0
+            });
+
+            state.unreadCounts = {
+                ...state.unreadCounts,
+                [stringId]: 0
+            };
+
             localStorage.setItem('unreadCounts', JSON.stringify(state.unreadCounts));
+        },
+        // initialize unread counts from localStorage
+        initializeUnreadCounts(state) {
+            const saved = localStorage.getItem('unreadCounts');
+            if (saved) {
+                state.unreadCounts = JSON.parse(saved);
+            }
         },
     },
     actions: {
@@ -107,17 +144,25 @@ export default createStore({
         incrementUnreadCount({ commit }, id) {
             commit('incrementUnreadCount', id);
         },
+
         markAsRead({ commit }, id) {
             commit('clearUnreadCount', id);
         },
+
+        initializeUnreadCounts({ commit }) {
+            commit('initializeUnreadCounts');
+        }
     },
     getters: {
         currentUser: state => state.user,
         allMessages: state => state.messages,
         getUsersOnline: state => state.usersOnline,
         typingUsers: state => state.typingUsers,
-        getUnreadCount: state => id => {
-            return state.unreadCounts[id] || 0; // Return count or 0 if not found
-        },
+        getUnreadCount: (state) => (id) => {
+            const stringId = id?.toString();
+            const count = stringId ? (state.unreadCounts[stringId] || 0) : 0;
+            console.log(`Getting unread count for ${stringId}:`, count);
+            return count;
+        }
     },
 });
