@@ -12,9 +12,9 @@ import (
 )
 
 type ChatService interface {
-	SendMessage(senderID, receiverID, groupID, content string) error // Updated signature
-	GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, error)
-	GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, error)
+	SendMessage(senderID, receiverID, groupID, content string) error
+	GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
+	GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	UpdateMessageStatus(messageID string, status string) error
 }
 
@@ -100,8 +100,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content string)
 	return nil
 }
 
-func (s *chatService) GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, error) {
-	// ... (existing GetConversation implementation - no changes needed here) ...
+func (s *chatService) GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error) {
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page < 1 {
 		page = 1
@@ -116,7 +115,8 @@ func (s *chatService) GetConversation(user1ID, user2ID string, pageStr, pageSize
 
 	return s.messageRepo.GetConversation(user1ID, user2ID, pageSize, offset)
 }
-func (s *chatService) GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, error) {
+
+func (s *chatService) GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, int64, error) {
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page < 1 {
 		page = 1
@@ -128,7 +128,8 @@ func (s *chatService) GetGroupConversation(groupID string, pageStr, pageSizeStr 
 	}
 
 	offset := (page - 1) * pageSize
-	return s.messageRepo.GetGroupConversation(groupID, pageSize, offset)
+
+	return s.messageRepo.GetGroupConversation(groupID, pageSize, offset) // Return count as well
 }
 func (s *chatService) UpdateMessageStatus(messageID string, status string) error {
 	//TODO:
