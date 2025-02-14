@@ -9,18 +9,20 @@
       <!-- Chatting with a User -->
       <div v-if="selectedUser">
         <h2>Chatting with {{ selectedUser.username }}</h2>
-        <ChatMessages :messages="filteredMessages"/>
+        <div class="chat-messages" ref="messagesContainer" @scroll="handleScroll">
+          <div v-if="loadingMore" class="loading-indicator">Loading...</div>
+          <ChatMessages :messages="filteredMessages"/>
+        </div>
         <ChatInput :receiverID="selectedUser.id" :groupID="null"/>
       </div>
       <!-- Chatting with a group -->
       <div v-else-if="selectedGroup">
         <div class="group-header">
-          <h2>
-            {{ selectedGroup.name }} </h2>
+          <h2>{{ selectedGroup.name }}</h2>
           <div class="group-code-container">
-      <span class="group-code" title="Share this code to invite others">
-        Group Code: {{ selectedGroup.code }}
-      </span>
+        <span class="group-code" title="Share this code to invite others">
+          Group Code: {{ selectedGroup.code }}
+        </span>
             <button class="copy-button" @click.stop="copyCode(selectedGroup.code)"
                     title="Copy to clipboard">
               Copy Code
@@ -32,7 +34,10 @@
           </div>
           <span v-if="copyMessage" class="copy-message">{{ copyMessage }}</span>
         </div>
-        <ChatMessages :messages="filteredMessages"/>
+        <div class="chat-messages" ref="messagesContainer" @scroll="handleScroll">
+          <div v-if="loadingMore" class="loading-indicator">Loading...</div>
+          <ChatMessages :messages="filteredMessages"/>
+        </div>
         <ChatInput :groupID="selectedGroup.id" :receiverID="null"/>
       </div>
     </div>
@@ -101,7 +106,7 @@ import ChatMessages from "./ChatMessages.vue";
 import ChatInput from "./ChatInput.vue";
 import {useStore} from "vuex";
 import axios from "axios";
-import {computed, onBeforeUnmount, onMounted, ref, watch} from "vue";
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from "vue";
 
 export default {
   name: "ChatWindow",
@@ -119,9 +124,9 @@ export default {
     const typingUsers = computed(() => store.getters.typingUsers);
     const searchQuery = ref(""); // Add search query
     const userGroups = ref([]); // To store user's groups
-    const copyMessage = ref("");
-    const showLeaveModal = ref(false);
-    const confirmLeaveGroup = () => {
+    const copyMessage = ref(""); // To Display copy message after copying
+    const showLeaveModal = ref(false); // Show leave group confirmation modal
+    const confirmLeaveGroup = () => { // Show leave group modal
       showLeaveModal.value = true;
     };
     const leaveGroup = async () => {
@@ -158,6 +163,25 @@ export default {
         showLeaveModal.value = false;
       }
     };
+
+    // Pagination-related variables
+    const page= ref(1); // Start at page 1
+    const pageSize = ref(20); // 20 messages per page
+    const hasMore = ref(true); // Whether there are more messages to load
+    const loadingMore = ref(false); // Track loading state
+    const messagesContainer = ref(null);
+
+    // Add scroll handler
+    const handleScroll = () => {
+      const container = messagesContainer.value;
+      if (!container || loadingMore.value || !hasMore.value) return;
+
+      // Load more when scrolling near top (within 100px)
+      if (container.scrollTop < 100) {
+        loadMoreMessages();
+      }
+    };
+
     onMounted(async () => {
       if (currentUser.value) {
         connectWebSocket();
@@ -410,11 +434,15 @@ export default {
       if (selectedUser.value) {
         try {
           const response = await axios.get(
-              `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}`
+              `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}&page=${page.value}&pageSize=${pageSize.value}`
           );
-          store.dispatch('setMessages', response.data);
+          // Add new mess to the top of list message
+          store.commit('addMessages', response.data.messages.reverse()); // Append new messages
+          hasMore.value = (page.value * pageSize.value) < response.data.total; // Check for more
         } catch (error) {
           console.error("Failed to fetch messages:", error);
+        } finally {
+          loadingMore.value = false; // Reset loading state
         }
       }
     };
@@ -422,16 +450,44 @@ export default {
     const fetchGroupMessages = async () => {
       if (selectedGroup.value && selectedGroup.value.id) {
         try {
-          console.log("Fetching messages for group:", selectedGroup.value.id);
           const response = await axios.get(
-              `http://localhost:8080/groups/${selectedGroup.value.id}/messages`
+              `http://localhost:8080/groups/${selectedGroup.value.id}/messages?page=${page.value}&pageSize=${pageSize.value}`
           );
-          store.dispatch('setMessages', response.data);
+          store.commit('addMessages', response.data.messages.reverse());
+          hasMore.value = (page.value * pageSize.value) < response.data.total;
         } catch (error) {
           console.error("Failed to fetch group messages:", error);
+        } finally {
+          loadingMore.value = false;
         }
-      } else {
-        console.error("No group selected or invalid group ID");
+      }
+    };
+
+    const loadMoreMessages = async () => {
+      if (!hasMore.value || loadingMore.value) return;
+
+      loadingMore.value = true;
+      const currentScrollHeight = messagesContainer.value.scrollHeight;
+
+      try {
+        page.value++; // Increment page before fetching
+
+        if (selectedUser.value) {
+          await fetchMessages();
+        } else if (selectedGroup.value) {
+          await fetchGroupMessages();
+        }
+
+        // Maintain scroll position after loading more messages
+        nextTick(() => {
+          const newScrollHeight = messagesContainer.value.scrollHeight;
+          messagesContainer.value.scrollTop = newScrollHeight - currentScrollHeight;
+        });
+      } catch (error) {
+        console.error('Error loading more messages:', error);
+        page.value--; // Revert page increment on error
+      } finally {
+        loadingMore.value = false;
       }
     };
 
@@ -498,6 +554,11 @@ export default {
       filteredMessages,
       copyCode,
       copyMessage,
+      hasMore,
+      loadMoreMessages,
+      messagesContainer,
+      handleScroll,
+      loadingMore,
       formatUnreadCount,
       getUnreadCount: (id) => store.getters.getUnreadCount(id),
       showLeaveModal,
@@ -516,8 +577,21 @@ export default {
 }
 
 .chat-messages {
-  flex-grow: 1;
+  height: 400px;
   overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin: 1rem 0;
+}
+
+.loading-indicator {
+  text-align: center;
+  padding: 1rem;
+  color: #666;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
 }
 
 .user-list {

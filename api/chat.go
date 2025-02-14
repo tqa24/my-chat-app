@@ -25,21 +25,28 @@ func NewChatHandler(chatService services.ChatService, hub *websockets.Hub) *Chat
 func (h *ChatHandler) GetConversation(c *gin.Context) {
 	user1ID := c.Query("user1")
 	user2ID := c.Query("user2")
-	page := c.DefaultQuery("page", "1")
-	pageSize := c.DefaultQuery("pageSize", "10")
+	// Change here
+	page := c.DefaultQuery("page", "1")          // Default to page 1
+	pageSize := c.DefaultQuery("pageSize", "10") // Default page size of 10
 
 	if user1ID == "" || user2ID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Both user1 and user2 parameters are required"})
 		return
 	}
 
-	messages, err := h.chatService.GetConversation(user1ID, user2ID, page, pageSize)
+	//Change here
+	messages, total, err := h.chatService.GetConversation(user1ID, user2ID, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve conversation"})
 		return
 	}
-
-	c.JSON(http.StatusOK, messages)
+	// Return messages and total count
+	c.JSON(http.StatusOK, gin.H{
+		"messages": messages,
+		"total":    total,    // Total number of messages
+		"page":     page,     // Current page
+		"pageSize": pageSize, // Page size
+	})
 }
 
 var upgrader = websocket.Upgrader{
@@ -109,23 +116,30 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Message sent successfully"})
 }
 
-// Add new handle func
+// GetGroupConversation handles retrieving the conversation history for a group.
 func (h *ChatHandler) GetGroupConversation(c *gin.Context) {
 	groupID := c.Param("id")
-
-	page := c.DefaultQuery("page", "1")
-	pageSize := c.DefaultQuery("pageSize", "10")
+	// Change here
+	page := c.DefaultQuery("page", "1")          // Default to page 1
+	pageSize := c.DefaultQuery("pageSize", "10") // Default page size
 
 	if groupID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "groupID parameters are required"})
 		return
 	}
 
-	messages, err := h.chatService.GetGroupConversation(groupID, page, pageSize)
+	// Change here
+	messages, total, err := h.chatService.GetGroupConversation(groupID, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve conversation"})
 		return
 	}
 
-	c.JSON(http.StatusOK, messages)
+	// Return messages and total count
+	c.JSON(http.StatusOK, gin.H{
+		"messages": messages,
+		"total":    total,    // Total number of messages
+		"page":     page,     // Current page
+		"pageSize": pageSize, // Page size
+	})
 }
