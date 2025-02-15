@@ -23,18 +23,17 @@ export default createStore({
             state.messages = messages;
         },
         addMessage(state, message) {
-            state.messages.unshift(message); // Add to the beginning for newest-first
+            // Add new message to the end (it will appear at the bottom due to flex-direction: column-reverse)
+            state.messages.push(message);
         },
         addMessages(state, newMessages) {
-            // Add new messages while maintaining order
+            // Add new messages while maintaining order (newest first)
             const uniqueMessages = newMessages.filter(
                 newMsg => !state.messages.some(
                     existingMsg => existingMsg.id === newMsg.id
                 )
             );
-            state.messages = [...state.messages, ...uniqueMessages].sort(
-                (a, b) => new Date(b.created_at) - new Date(a.created_at)
-            );
+            state.messages = [...uniqueMessages, ...state.messages];
         },
         setUsersOnline(state, users) {
             state.usersOnline = users;

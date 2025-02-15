@@ -106,7 +106,7 @@ import ChatMessages from "./ChatMessages.vue";
 import ChatInput from "./ChatInput.vue";
 import {useStore} from "vuex";
 import axios from "axios";
-import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from "vue";
+import {computed, onBeforeUnmount, onMounted, ref, watch} from "vue";
 
 export default {
   name: "ChatWindow",
@@ -176,7 +176,7 @@ export default {
       const container = messagesContainer.value;
       if (!container || loadingMore.value || !hasMore.value) return;
 
-      // Load more when scrolling near top (within 100px)
+      // Load more when scrolling near top
       if (container.scrollTop < 100) {
         loadMoreMessages();
       }
@@ -467,7 +467,6 @@ export default {
       if (!hasMore.value || loadingMore.value) return;
 
       loadingMore.value = true;
-      const currentScrollHeight = messagesContainer.value.scrollHeight;
 
       try {
         page.value++; // Increment page before fetching
@@ -478,11 +477,6 @@ export default {
           await fetchGroupMessages();
         }
 
-        // Maintain scroll position after loading more messages
-        nextTick(() => {
-          const newScrollHeight = messagesContainer.value.scrollHeight;
-          messagesContainer.value.scrollTop = newScrollHeight - currentScrollHeight;
-        });
       } catch (error) {
         console.error('Error loading more messages:', error);
         page.value--; // Revert page increment on error
