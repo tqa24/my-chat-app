@@ -9,13 +9,16 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 )
 
 type ChatService interface {
-	SendMessage(senderID, receiverID, groupID, content string) error
+	SendMessage(senderID, receiverID, groupID, content string, replyToMessageID string) error
 	GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	UpdateMessageStatus(messageID string, status string) error
+	AddReaction(messageID, userID, reaction string) error    // NEW
+	RemoveReaction(messageID, userID, reaction string) error // NEW
 }
 
 type chatService struct {
@@ -29,7 +32,7 @@ func NewChatService(messageRepo repositories.MessageRepository, groupRepo reposi
 	return &chatService{messageRepo, groupRepo, hub}
 }
 
-func (s *chatService) SendMessage(senderID, receiverID, groupID, content string) error {
+func (s *chatService) SendMessage(senderID, receiverID, groupID, content string, replyToMessageID string) error {
 	senderUUID, err := uuid.Parse(senderID)
 	if err != nil {
 		return fmt.Errorf("invalid sender ID: %v", err)
@@ -52,13 +55,23 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content string)
 		}
 		groupUUID = &id
 	}
+	// Handle Reply-to
+	var replyToUUID *uuid.UUID
+	if replyToMessageID != "" {
+		replyID, err := uuid.Parse(replyToMessageID)
+		if err != nil {
+			return fmt.Errorf("invalid reply_to_message_id: %v", err)
+		}
+		replyToUUID = &replyID
+	}
 
 	message := &models.Message{
-		SenderID:   senderUUID,
-		ReceiverID: receiverUUID,
-		GroupID:    groupUUID,
-		Content:    content,
-		Status:     "sent",
+		SenderID:         senderUUID,
+		ReceiverID:       receiverUUID,
+		GroupID:          groupUUID,
+		Content:          content,
+		Status:           "sent",
+		ReplyToMessageID: replyToUUID, // Set ReplyToMessageID
 	}
 
 	err = s.messageRepo.Create(message)
@@ -73,6 +86,10 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content string)
 		"content":    content,
 		"message_id": message.ID.String(),
 		"created_at": message.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+	// Add reply_to_message_id if present
+	if replyToUUID != nil {
+		msgData["reply_to_message_id"] = replyToMessageID
 	}
 
 	// Add receiver_id or group_id based on message type
@@ -134,4 +151,100 @@ func (s *chatService) GetGroupConversation(groupID string, pageStr, pageSizeStr 
 func (s *chatService) UpdateMessageStatus(messageID string, status string) error {
 	//TODO:
 	return nil
+}
+
+// AddReaction adds a reaction to a message.
+func (s *chatService) AddReaction(messageID, userID, reaction string) error {
+	_, err := uuid.Parse(messageID)
+	if err != nil {
+		return fmt.Errorf("invalid message ID: %v", err)
+	}
+	_, err = uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %v", err)
+	}
+
+	message, err := s.messageRepo.GetByID(messageID) // You need a GetByID in your repo
+	if err != nil {
+		return err
+	}
+	if message == nil {
+		return fmt.Errorf("message not found")
+	}
+
+	// Update the reactions.  We're using a map where keys are reactions,
+	// and values are arrays of user IDs.
+	var reactions map[string][]string
+	if err := json.Unmarshal(message.Reactions, &reactions); err != nil {
+		// If unmarshaling fails, assume empty reactions
+		reactions = make(map[string][]string)
+	}
+
+	// Check if the user has already reacted with this emoji.
+	userList := reactions[reaction]
+	for _, u := range userList {
+		if u == userID {
+			return fmt.Errorf("user has already reacted with this emoji")
+		}
+	}
+
+	reactions[reaction] = append(reactions[reaction], userID)
+	//Marshal back
+	updatedReactions, err := json.Marshal(reactions)
+	if err != nil {
+		return fmt.Errorf("error when marshal reactions")
+	}
+	message.Reactions = datatypes.JSON(updatedReactions)
+	return s.messageRepo.Update(message) // You need an Update method
+}
+
+// RemoveReaction removes a reaction from a message.
+func (s *chatService) RemoveReaction(messageID, userID, reaction string) error {
+	_, err := uuid.Parse(messageID)
+	if err != nil {
+		return fmt.Errorf("invalid message ID: %v", err)
+	}
+	_, err = uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %v", err)
+	}
+
+	message, err := s.messageRepo.GetByID(messageID) // Assuming you have GetByID
+	if err != nil {
+		return err
+	}
+	if message == nil {
+		return fmt.Errorf("message not found")
+	}
+
+	var reactions map[string][]string
+	if err := json.Unmarshal(message.Reactions, &reactions); err != nil {
+		// If it's completely broken, just return (nothing to remove)
+		return nil
+	}
+
+	userList, ok := reactions[reaction]
+	if !ok {
+		return nil // Reaction doesn't exist, nothing to do
+	}
+
+	// Remove the user from the list.
+	for i, u := range userList {
+		if u == userID {
+			reactions[reaction] = append(userList[:i], userList[i+1:]...)
+			break
+		}
+	}
+
+	// If the reaction list is now empty, remove the reaction key.
+	if len(reactions[reaction]) == 0 {
+		delete(reactions, reaction)
+	}
+
+	updatedReactions, err := json.Marshal(reactions)
+	if err != nil {
+		return fmt.Errorf("error when marshal reactions")
+	}
+	message.Reactions = datatypes.JSON(updatedReactions)
+	return s.messageRepo.Update(message) // Update the message in the repo
 }

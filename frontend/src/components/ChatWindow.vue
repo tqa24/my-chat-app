@@ -226,6 +226,8 @@ export default {
       selectedGroup.value = null; // Clear selected group
       store.dispatch("clearMessages"); // Clear previous messages
       store.dispatch('markAsRead', user.id); // Mark messages as read
+      page.value = 1;          // Reset page number
+      hasMore.value = true;     // Reset hasMore
       await fetchMessages(); // Fetch messages for the new conversation
     };
 
@@ -256,6 +258,10 @@ export default {
           group_id: group.ID
         }));
       }
+
+      // Reset pagination
+      page.value = 1;
+      hasMore.value = true;
 
       if (group.ID) {
         await fetchGroupMessages();
@@ -446,7 +452,7 @@ export default {
         }
       }
     };
-
+    // Refetch group message
     const fetchGroupMessages = async () => {
       if (selectedGroup.value && selectedGroup.value.id) {
         try {
@@ -540,8 +546,6 @@ export default {
       startChatWithUser,
       startChatWithGroup,
       typingUsers,
-      fetchMessages,
-      fetchGroupMessages,
       searchQuery,
       filteredUsers,
       userGroups,
@@ -554,6 +558,9 @@ export default {
       handleScroll,
       loadingMore,
       formatUnreadCount,
+      // Refetch group message and user message
+      fetchGroupMessages,
+      fetchMessages,
       getUnreadCount: (id) => store.getters.getUnreadCount(id),
       showLeaveModal,
       confirmLeaveGroup,

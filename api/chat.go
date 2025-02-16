@@ -1,4 +1,3 @@
-// api/chat.go
 package api
 
 import (
@@ -88,6 +87,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	receiverID := c.PostForm("receiver_id")
 	groupID := c.PostForm("group_id") // Get group_id
 	content := c.PostForm("content")
+	replyToMessageID := c.PostForm("reply_to_message_id") // Get reply_to_message_id
 	fmt.Println(senderID, receiverID, content)
 	// Validate the data
 	if senderID == "" || content == "" {
@@ -106,7 +106,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	}
 
 	// Call the ChatService to send the message
-	err := h.chatService.SendMessage(senderID, receiverID, groupID, content) // Updated call
+	err := h.chatService.SendMessage(senderID, receiverID, groupID, content, replyToMessageID) // Updated call
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message"})
 		return
@@ -142,4 +142,59 @@ func (h *ChatHandler) GetGroupConversation(c *gin.Context) {
 		"page":     page,     // Current page
 		"pageSize": pageSize, // Page size
 	})
+}
+
+// AddReaction handles adding a reaction to a message
+func (h *ChatHandler) AddReaction(c *gin.Context) {
+	messageID := c.Param("id") // Get message ID
+	var req struct {
+		UserID   string `json:"user_id"`
+		Reaction string `json:"reaction"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
+		return
+	}
+	userID := req.UserID     // User ID
+	reaction := req.Reaction // Reaction string
+	if messageID == "" || userID == "" || reaction == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing parameters"})
+		return
+	}
+
+	err := h.chatService.AddReaction(messageID, userID, reaction)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Reaction added"})
+}
+
+// RemoveReaction handles removing a reaction from a message
+func (h *ChatHandler) RemoveReaction(c *gin.Context) {
+	messageID := c.Param("id")
+	var req struct {
+		UserID   string `json:"user_id"`
+		Reaction string `json:"reaction"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
+		return
+	}
+	userID := req.UserID     // User ID
+	reaction := req.Reaction // Reaction string
+
+	if messageID == "" || userID == "" || reaction == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing parameters"})
+		return
+	}
+
+	err := h.chatService.RemoveReaction(messageID, userID, reaction)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Reaction removed"})
 }

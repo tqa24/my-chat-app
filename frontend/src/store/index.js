@@ -9,6 +9,7 @@ export default createStore({
         ws: null, // Add WebSocket
         selectedGroup: null,
         unreadCounts: {}, // Store unread counts for users and groups
+        replyingTo: null, // NEW: Message being replied to
     },
     mutations: {
         setUser(state, user) {
@@ -23,8 +24,21 @@ export default createStore({
             state.messages = messages;
         },
         addMessage(state, message) {
-            // Add new message to the end (it will appear at the bottom due to flex-direction: column-reverse)
             state.messages.push(message);
+
+            if (message.reply_to_message_id) {
+                const originalMessageIndex = state.messages.findIndex(m => m.id === message.reply_to_message_id);
+                if (originalMessageIndex !== -1) {
+                    // Directly modify properties of the existing object.  Vue3's reactivity
+                    // system will detect changes to nested properties.
+                    state.messages[originalMessageIndex].reply_to_message = {
+                        id: message.id, // The ID of the *reply* message
+                        content: message.content,
+                        sender_id: message.sender_id,
+                        // Add other relevant fields from 'message' if needed
+                    };
+                }
+            }
         },
         addMessages(state, newMessages) {
             // Add new messages while maintaining order (newest first)
@@ -106,6 +120,9 @@ export default createStore({
                 state.unreadCounts = JSON.parse(saved);
             }
         },
+        setReplyingTo(state, message) { // NEW: Set the replyingTo message
+            state.replyingTo = message;
+        },
     },
     actions: {
         login({ commit }, user) {
@@ -161,7 +178,37 @@ export default createStore({
 
         initializeUnreadCounts({ commit }) {
             commit('initializeUnreadCounts');
-        }
+        },
+        // Refetch group message
+        async fetchGroupMessages({dispatch, state}){
+            if(state.selectedGroup && state.selectedGroup.id){
+                try {
+                    const response = await axios.get(
+                        `http://localhost:8080/groups/${state.selectedGroup.id}/messages?page=1&pageSize=20` // Hard code for now
+                    );
+                    // Replace message with new message from server
+                    dispatch('setMessages', response.data.messages.reverse());
+
+                } catch (error) {
+                    console.error("Failed to fetch group messages:", error);
+                }
+            }
+        },
+        // Refetch user message
+        async fetchMessages({dispatch, state}){
+            if(state.selectedUser){
+                try {
+                    const response = await axios.get(
+                        //Change here
+                        `http://localhost:8080/messages?user1=${state.user?.id}&user2=${state.selectedUser?.id}&page=1&pageSize=20` //Hard code
+                    );
+                    // Replace message with new message from server
+                    dispatch('setMessages', response.data.messages.reverse());
+                } catch (error) {
+                    console.error("Failed to fetch messages:", error);
+                }
+            }
+        },
     },
     getters: {
         currentUser: state => state.user,

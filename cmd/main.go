@@ -67,6 +67,8 @@ func main() {
 	r.GET("/users/:id/groups", groupHandler.ListGroupsForUser)      // List groups for a user
 	r.GET("/groups", groupHandler.GetAllGroups)                     // Get all groups
 	r.GET("/groups/:id/messages", chatHandler.GetGroupConversation) // For get group conversation
+	r.POST("/messages/:id/react", chatHandler.AddReaction)          // NEW: Add reaction
+	r.DELETE("/messages/:id/react", chatHandler.RemoveReaction)     // NEW: Remove reaction
 
 	// Start the server
 	log.Printf("Server listening on port %s", config.AppConfig.AppPort)

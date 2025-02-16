@@ -40,12 +40,13 @@ type Client struct {
 	UserID string
 }
 type WebSocketMessage struct {
-	Type       string `json:"type"`
-	SenderID   string `json:"sender_id"`
-	ReceiverID string `json:"receiver_id"`
-	GroupID    string `json:"group_id"`
-	Content    string `json:"content"`
-	MessageID  string `json:"message_id"`
+	Type             string `json:"type"`
+	SenderID         string `json:"sender_id"`
+	ReceiverID       string `json:"receiver_id"`
+	GroupID          string `json:"group_id"`
+	Content          string `json:"content"`
+	MessageID        string `json:"message_id"`
+	ReplyToMessageID string `json:"reply_to_message_id"` // NEW
 }
 
 // ReadPump pumps messages from the websocket connection to the hub.
@@ -80,13 +81,13 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 			// Use the MessageSaver interface to save the message
 			//Check if receiver or group
 			if wsMessage.ReceiverID != "" {
-				err := messageSaver.SendMessage(wsMessage.SenderID, wsMessage.ReceiverID, "", wsMessage.Content)
+				err := messageSaver.SendMessage(wsMessage.SenderID, wsMessage.ReceiverID, "", wsMessage.Content, wsMessage.ReplyToMessageID) // Pass replyToMessageID
 				if err != nil {
 					log.Printf("Error saving message: %v", err)
 					continue
 				}
 			} else if wsMessage.GroupID != "" {
-				err := messageSaver.SendMessage(wsMessage.SenderID, "", wsMessage.GroupID, wsMessage.Content)
+				err := messageSaver.SendMessage(wsMessage.SenderID, "", wsMessage.GroupID, wsMessage.Content, wsMessage.ReplyToMessageID) //Pass replyToMessageID
 				if err != nil {
 					log.Printf("Error saving message: %v", err)
 					continue
