@@ -16,7 +16,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, onUnmounted } from 'vue'; // Add computed here
+import { ref, computed, watch, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 let typingTimeout = null;
 export default {

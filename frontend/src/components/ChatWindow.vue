@@ -331,28 +331,34 @@ export default {
               const data = JSON.parse(message);
               console.log("Received:", data);
 
+              // Move messageObj declaration outside switch
+              let messageObj = null;
+
               switch (data.type) {
                 case "new_message":
-                  store.dispatch('addMessage', data);
-                  if (data.sender_id !== currentUser.value?.id) {
-                    // For group messages
-                    if (data.group_id) {
-                      console.log('Group message received:', {
-                        message: data,
-                        group_id: data.group_id,
-                        selected_group: selectedGroup.value?.id,
-                        current_unread: store.getters.getUnreadCount(data.group_id),
-                        is_current_group: selectedGroup.value?.id === data.group_id.toString()
-                      });
+                  messageObj = {
+                    id: data.message_id,
+                    sender_id: data.sender_id,
+                    receiver_id: data.receiver_id,
+                    group_id: data.group_id,
+                    content: data.content,
+                    created_at: data.created_at,
+                    reply_to_message_id: data.reply_to_message_id,
+                    status: 'sent'
+                  };
 
-                      // Only increment if we're not currently viewing this group
+                  if (data.reply_to_message) {
+                    messageObj.reply_to_message = data.reply_to_message;
+                  }
+
+                  store.dispatch('addMessage', messageObj);
+
+                  if (data.sender_id !== currentUser.value?.id) {
+                    if (data.group_id) {
                       if (!selectedGroup.value || data.group_id.toString() !== selectedGroup.value.id.toString()) {
-                        console.log('Incrementing unread count for group:', data.group_id);
                         store.dispatch('incrementUnreadCount', data.group_id.toString());
                       }
-                    }
-                    // For direct messages
-                    else {
+                    } else {
                       if (!selectedUser.value || data.sender_id !== selectedUser.value.id) {
                         store.dispatch('incrementUnreadCount', data.sender_id.toString());
                       }

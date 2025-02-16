@@ -1,297 +1,425 @@
 <template>
-  <div class="chat-messages">
-    <div v-for="message in reversedMessages" :key="message.id" :class="messageClass(message)"
-         @mouseenter="hoveredMessage = message.id"
-         @mouseleave="hoveredMessage = null"
-    >
-      <div class="message-container">
-        <div class="message-wrapper">
-          <!-- Reply display -->
-          <div v-if="message.reply_to_message" class="reply-message">
-            <div class="reply-header">
-              <span>Replying to {{ userIdToName[message.reply_to_message.sender_id] || 'Unknown User' }}</span>
-            </div>
-            <div class="reply-content">
-              <span>{{ message.reply_to_message.content }}</span>
-            </div>
-          </div>
+  <div class="messages" ref="messagesContainer">
+    <div v-for="message in messages"
+         :key="message.id"
+         :class="['message', getMessageClass(message)]"
+         :data-message-id="message.id">
+      <div class="message-content">
+        <!-- Reply preview section -->
+        <div v-if="message.reply_to_message" class="reply-preview" @click="scrollToMessage(message.reply_to_message.id)">
+          <span>{{ getReplyPreview(message.reply_to_message) }}</span>
+        </div>
 
-          <div class="message-content">
-            <span>{{ message.content }}</span>
-          </div>
+        <div class="message-text">{{ message.content }}</div>
 
-          <!-- Message Options (appears on hover) -->
-          <div class="message-options" v-show="hoveredMessage === message.id">
-            <button class="option-btn" @click="replyToMessage(message)">
-              <i class="fas fa-reply option-icon"></i>
-            </button>
-            <button class="option-btn" @click="showReactionPicker = !showReactionPicker; showMessageOptions = false">
-              <i class="fas fa-smile option-icon"></i>
-            </button>
-            <button class="option-btn" @click="showMessageOptions = !showMessageOptions; showReactionPicker = false">
-              <i class="fas fa-ellipsis-h option-icon"></i>
-            </button>
-          </div>
-
-          <!-- Reaction Picker (Conditional) -->
-          <div v-if="showReactionPicker && hoveredMessage === message.id" class="reaction-picker">
-            <span @click="addReaction(message, '❤️')">❤️</span>
-            <span @click="addReaction(message, '😂')">😂</span>
-            <span @click="addReaction(message, '😮')">😮</span>
-            <span @click="addReaction(message, '😢')">😢</span>
-            <span @click="addReaction(message, '😠')">😠</span>
-            <span @click="addReaction(message, '👍')">👍</span>
-            <span @click="addReaction(message, '+')" class="add-reaction-plus">+</span>
-          </div>
-
+        <!-- Reactions section -->
+        <div class="reactions-container">
           <!-- Display existing reactions -->
-          <div class="reactions" v-show="hasReactions(message)">
-            <span v-for="(reaction, emoji) in message.reactions" :key="emoji" class="reaction" @click="toggleReaction(message, emoji)">
-              {{ emoji }} {{ reaction.length }}
+          <div v-if="message.reactions && Object.keys(message.reactions).length > 0" class="reactions">
+            <span v-for="(users, emoji) in message.reactions"
+                  :key="emoji"
+                  class="reaction"
+                  :class="{ 'user-reacted': hasUserReactedWithEmoji(message, emoji) }"
+                  :title="getReactionUsers(users)"
+                  @click="handleReactionClick(message, emoji)">
+              {{ emoji }} {{ users.length }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Message actions -->
+        <div class="message-actions"
+             @mouseover="hoveredMessageId = message.id"
+             @mouseleave="hoveredMessageId = null">
+          <div v-if="hoveredMessageId === message.id" class="action-buttons">
+            <button class="action-button" @click="replyToMessage(message)">
+              ↩️
+            </button>
+            <button class="action-button" @click="toggleReactionPicker(message)">
+              😀
+            </button>
+          </div>
+
+          <!-- Reaction picker -->
+          <div v-if="showReactionPicker && selectedMessageId === message.id"
+               class="reaction-picker"
+               v-click-outside="closeReactionPicker">
+            <span v-for="emoji in availableReactions"
+                  :key="emoji"
+                  @click="addReaction(message, emoji)"
+                  :class="{ 'selected': hasUserReactedWithEmoji(message, emoji) }"
+                  class="emoji-option">
+              {{ emoji }}
             </span>
           </div>
         </div>
       </div>
-      <div class="message-meta">
-        {{ formatTime(message.created_at) }}
-        <span> - </span>
-        {{ message.sender_id == currentUser?.id ? currentUser.username : userIdToName[message.sender_id] }}
-        <span> - </span>
-        {{ message.status }}
+      <div class="message-info">
+        <small>{{ formatTime(message.created_at) }}</small>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { computed, ref } from 'vue';
+import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useStore } from 'vuex';
-import { format } from 'date-fns';
-import axios from 'axios';
 
 export default {
-  setup() {
+  props: {
+    messages: {
+      type: Array,
+      required: true
+    }
+  },
+  directives: {
+    'click-outside': {
+      mounted(el, binding) {
+        el._clickOutside = (event) => {
+          if (!(el === event.target || el.contains(event.target))) {
+            binding.value(event);
+          }
+        };
+        document.addEventListener('click', el._clickOutside);
+      },
+      unmounted(el) {
+        document.removeEventListener('click', el._clickOutside);
+      },
+    },
+  },
+  setup(props) {
     const store = useStore();
-    const messages = computed(() => store.getters.allMessages);
-    const currentUser = computed(() => store.getters.currentUser);
-    const usersOnline = computed(() => store.getters.getUsersOnline);
-    const reversedMessages = computed(() => [...messages.value].reverse());
-    const userIdToName = computed(() => {
-      const map = {};
-      usersOnline.value.forEach(user => {
-        map[user.id] = user.username;
-      });
-      return map;
-    });
-
-    // State for hover and reaction picker
-    const hoveredMessage = ref(null);
     const showReactionPicker = ref(false);
-    const showMessageOptions = ref(false);
+    const selectedMessageId = ref(null);
+    const hoveredMessageId = ref(null);
+    const messagesContainer = ref(null);
+    const currentUser = computed(() => store.state.user);
 
-    const messageClass = (message) => ({
-      'message': true,
-      'sent-message': currentUser.value?.id === message.sender_id,
-      'received-message': currentUser.value?.id !== message.sender_id,
+    const availableReactions = ['👍', '❤️', '😮', '😢', '😠'];
+
+    // Scroll to bottom when new messages arrive
+    watch(() => props.messages, async () => {
+      await nextTick();
+      scrollToBottom();
+    }, { deep: true });
+
+    onMounted(() => {
+      scrollToBottom();
     });
 
-    const formatTime = (timestamp) => format(new Date(timestamp), 'HH:mm');
-
-    const addReaction = async (message, reaction) => {
-      try {
-        const userReacted = message.reactions[reaction]?.includes(currentUser.value.id);
-        const shouldAdd = !userReacted; // Calculate *before* the optimistic update
-
-        // Optimistically update the UI *before* sending the request.
-        store.dispatch('toggleReaction', { messageId: message.id, reaction, add: shouldAdd });
-
-        if (!shouldAdd) { // Use the pre-calculated value
-          // Remove reaction
-          await axios.delete(`http://localhost:8080/messages/${message.id}/react`, {
-            data: { user_id: currentUser.value.id, reaction: reaction }
-          });
-        } else {
-          // Add reaction
-          await axios.post(`http://localhost:8080/messages/${message.id}/react`, {
-            user_id: currentUser.value.id,
-            reaction: reaction,
-          });
-        }
-
-        // No need to fetch messages here; optimistic update handles it
-
-      } catch (error) {
-        console.error('Failed to toggle reaction:', error);
-        // If the request fails, revert the optimistic update
-        const userReacted = message.reactions[reaction]?.includes(currentUser.value.id); //re-calculate
-        const shouldAdd = !userReacted;//re-calculate
-        store.dispatch('toggleReaction', { messageId: message.id, reaction, add: !shouldAdd }); // Revert: Use the OPPOSITE of shouldAdd
+    const scrollToBottom = () => {
+      if (messagesContainer.value) {
+        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
       }
+    };
+
+    const closeReactionPicker = () => {
+      showReactionPicker.value = false;
+      selectedMessageId.value = null;
+    };
+
+    const toggleReactionPicker = (message) => {
+      if (selectedMessageId.value === message.id) {
+        closeReactionPicker();
+      } else {
+        showReactionPicker.value = true;
+        selectedMessageId.value = message.id;
+      }
+    };
+
+    const handleReactionClick = (message, emoji) => {
+      if (hasUserReactedWithEmoji(message, emoji)) {
+        removeReaction(message, emoji);
+      } else {
+        addReaction(message, emoji);
+      }
+    };
+
+    const addReaction = async (message, emoji) => {
+      try {
+        // Remove existing reaction if any
+        Object.keys(message.reactions || {}).forEach(existingEmoji => {
+          if (message.reactions[existingEmoji].includes(currentUser.value.id)) {
+            removeReaction(message, existingEmoji);
+          }
+        });
+
+        // Send reaction to backend via WebSocket
+        store.state.ws.send(JSON.stringify({
+          type: "reaction",
+          message_id: message.id,
+          emoji: emoji
+        }));
+
+        // Optimistically update UI
+        if (!message.reactions) {
+          message.reactions = {};
+        }
+        if (!message.reactions[emoji]) {
+          message.reactions[emoji] = [];
+        }
+        if (!message.reactions[emoji].includes(currentUser.value.id)) {
+          message.reactions[emoji].push(currentUser.value.id);
+        }
+      } catch (error) {
+        console.error('Failed to add reaction:', error);
+      }
+      closeReactionPicker();
+    };
+
+    const removeReaction = (message, emoji) => {
+      try {
+        // Send remove reaction to backend via WebSocket
+        store.state.ws.send(JSON.stringify({
+          type: "remove_reaction",
+          message_id: message.id,
+          emoji: emoji
+        }));
+
+        // Optimistically update UI
+        if (message.reactions?.[emoji]) {
+          const index = message.reactions[emoji].indexOf(currentUser.value.id);
+          if (index > -1) {
+            message.reactions[emoji].splice(index, 1);
+            if (message.reactions[emoji].length === 0) {
+              delete message.reactions[emoji];
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to remove reaction:', error);
+      }
+    };
+
+    const hasUserReactedWithEmoji = (message, emoji) => {
+      return message.reactions?.[emoji]?.includes(currentUser.value.id) || false;
+    };
+
+    const hasUserReacted = (message) => {
+      return Object.values(message.reactions || {}).some(users =>
+          users.includes(currentUser.value.id)
+      );
+    };
+
+    const getReactionUsers = (users) => {
+      return users.map(userId => {
+        if (userId === currentUser.value.id) return 'You';
+        const user = store.getters.getUserById(userId);
+        return user ? user.username : 'Unknown User';
+      }).join(', ');
+    };
+
+    const getReplyPreview = (replyMessage) => {
+      if (replyMessage.sender_id === currentUser.value.id) {
+        return `You: ${replyMessage.content}`;
+      }
+      const sender = store.getters.getUserById(replyMessage.sender_id);
+      return `${sender ? sender.username : 'Unknown User'}: ${replyMessage.content}`;
     };
 
     const replyToMessage = (message) => {
       store.commit('setReplyingTo', message);
     };
-    //Helper function
-    const hasReactions = (message) => {
-      return message.reactions && Object.keys(message.reactions).length > 0;
-    }
+
+    const scrollToMessage = (messageId) => {
+      const element = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.classList.add('highlight');
+        setTimeout(() => element.classList.remove('highlight'), 2000);
+      }
+    };
+
+    const getMessageClass = (message) => {
+      return message.sender_id === currentUser.value.id ? 'sent' : 'received';
+    };
+
+    const formatTime = (timestamp) => {
+      if (!timestamp) return '';
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
 
     return {
-      reversedMessages, messages, currentUser, messageClass, formatTime,
-      userIdToName, replyToMessage, hoveredMessage,
-      showReactionPicker, showMessageOptions, hasReactions, addReaction
+      currentUser,
+      showReactionPicker,
+      selectedMessageId,
+      hoveredMessageId,
+      messagesContainer,
+      availableReactions,
+      toggleReactionPicker,
+      closeReactionPicker,
+      addReaction,
+      removeReaction,
+      getMessageClass,
+      formatTime,
+      getReplyPreview,
+      hasUserReacted,
+      hasUserReactedWithEmoji,
+      handleReactionClick,
+      getReactionUsers,
+      replyToMessage,
+      scrollToMessage
     };
   }
 };
 </script>
 
 <style scoped>
-.chat-messages {
-  padding: 10px;
-  overflow-y: auto;
-  height: 300px;
+.messages {
   display: flex;
-  flex-direction: column-reverse;
-}
-
-.message-container {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 10px;
-}
-
-.message-wrapper {
-  position: relative; /* Important for positioning children */
-  max-width: 70%; /* Limit message width */
+  flex-direction: column;
+  gap: 10px;
 }
 
 .message {
+  max-width: 70%;
   padding: 8px 12px;
-  border-radius: 18px;
-  word-wrap: break-word;
-  margin-bottom: 2px; /* Space between message content and reactions */
+  border-radius: 8px;
+  margin: 4px 0;
+  position: relative;
 }
 
-.sent-message {
-  background-color: #0084ff;
-  color: white;
+.sent {
   align-self: flex-end;
-  margin-left: auto; /* Push to the right */
-  border-top-right-radius: 2px; /*  Less rounded corner */
+  background-color: #007bff;
+  color: white;
 }
 
-.received-message {
-  background-color: #f0f0f0;
-  color: black;
+.received {
   align-self: flex-start;
-  margin-right: auto; /* Push to the left */
-  border-top-left-radius: 2px;  /* Less rounded corner */
+  background-color: #e9ecef;
+  color: black;
 }
 
-.message-meta {
-  font-size: 11px;
-  color: #888;
-  margin-top: 4px;
-  clear: both; /* Clear any floats from absolute positioning */
+.message-content {
+  position: relative;
 }
 
-/* Reply Message Styles */
-.reply-message {
-  background-color: rgba(0, 0, 0, 0.05); /* Lighter background */
-  padding: 5px 8px;
+.reply-preview {
+  font-size: 0.8em;
+  padding: 4px 8px;
   margin-bottom: 4px;
+  background-color: rgba(0, 0, 0, 0.1);
   border-radius: 4px;
-  border-left: 3px solid #0084ff;
-  font-size: smaller;
-}
-
-.reply-header {
-  font-weight: bold;
-  margin-bottom: 2px;
-}
-
-.reply-content {
-  font-style: italic;
-  color: #555;
-}
-
-/* Message Options (Hidden by default) */
-.message-options {
-  position: absolute;
-  top: -5px; /* Position slightly above the message */
-  right: 5px;  /* Position to the right */
-  display: none; /* Hidden by default */
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 2px;
-  z-index: 10;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2); /* Add a shadow */
-}
-
-/* Show options on hover */
-.message-wrapper:hover .message-options {
-  display: flex;
-}
-
-.option-btn {
-  background: none;
-  border: none;
-  padding: 2px 5px;
   cursor: pointer;
+}
+
+.reply-preview:hover {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.message-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
 }
 
-.option-icon {
-  font-size: 18px; /* Slightly larger icons */
-}
-
-/* Reaction Picker Styles */
-.reaction-picker {
-  position: absolute;
-  bottom: 25px;     /* Position above the message options */
-  right: 0px;
-  display: flex;
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 15px; /* Rounded corners */
-  padding: 5px;
-  z-index: 20;      /* Above message options */
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2); /* Add a subtle shadow */
-}
-
-.reaction-picker span {
+.action-button {
+  background: none;
+  border: none;
+  color: inherit;
   cursor: pointer;
-  margin: 0 5px; /* More spacing */
-  font-size: 20px; /*  larger emojis */
-  line-height: 1;
-}
-/* Style the "+" in the reaction picker */
-.add-reaction-plus{
-  color: #888;
+  padding: 2px 6px;
+  font-size: 0.9em;
+  opacity: 0.7;
+  transition: opacity 0.2s;
 }
 
-/* Reactions Display */
-.reactions {
-  position: absolute;
-  bottom: -20px;
-  left: 0;
+.action-button:hover {
+  opacity: 1;
+}
+
+.reactions-container {
   display: flex;
-  z-index: 5; /* Below options and picker, but above message */
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.reactions {
+  display: flex;
+  gap: 4px;
 }
 
 .reaction {
-  margin-right: 4px;
-  font-size: 11px;
-  background-color: rgba(255, 255, 255, 0.9); /* Semi-transparent white */
-  border: 1px solid #ccc;
-  border-radius: 10px;
-  padding: 1px 4px;
-  line-height: 1;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1); /* Subtle shadow */
-  cursor: pointer; /* Add cursor pointer */
+  background-color: rgba(255, 255, 255, 0.2);
+  padding: 2px 4px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.reaction:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.user-reacted {
+  background-color: rgba(255, 255, 255, 0.4);
+  font-weight: bold;
+}
+
+.reaction-button {
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  padding: 2px 6px;
+  font-size: 0.9em;
+}
+
+.reaction-button:hover {
+  opacity: 1;
+}
+
+.reaction-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 4px;
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+}
+
+.emoji-option {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.emoji-option:hover {
+  background-color: #f0f0f0;
+}
+
+.emoji-option.selected {
+  background-color: #e0e0e0;
+  font-weight: bold;
+}
+
+.message-info {
+  font-size: 0.7em;
+  margin-top: 2px;
+  opacity: 0.8;
+}
+
+.highlight {
+  animation: highlight 2s ease-out;
+}
+
+@keyframes highlight {
+  0% {
+    background-color: rgba(255, 255, 0, 0.5);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 </style>

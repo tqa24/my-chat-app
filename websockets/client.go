@@ -46,7 +46,8 @@ type WebSocketMessage struct {
 	GroupID          string `json:"group_id"`
 	Content          string `json:"content"`
 	MessageID        string `json:"message_id"`
-	ReplyToMessageID string `json:"reply_to_message_id"` // NEW
+	ReplyToMessageID string `json:"reply_to_message_id"`
+	Emoji            string `json:"emoji"` // Add this for reactions
 }
 
 // ReadPump pumps messages from the websocket connection to the hub.
@@ -118,6 +119,33 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 			// Add the client to the group
 			c.Hub.AddClientToGroup(c.UserID, wsMessage.GroupID)
 			log.Printf("Client %s joined group %s", c.UserID, wsMessage.GroupID)
+		case "reaction":
+			// Handle adding reaction
+			if messageSaver, ok := messageSaver.(interface {
+				AddReaction(messageID, userID, emoji string) error
+			}); ok {
+				err := messageSaver.AddReaction(wsMessage.MessageID, c.UserID, wsMessage.Emoji)
+				if err != nil {
+					log.Printf("Error adding reaction: %v", err)
+					continue
+				}
+				// Broadcast the reaction update
+				c.Hub.Broadcast <- message
+			}
+
+		case "remove_reaction":
+			// Handle removing reaction
+			if messageSaver, ok := messageSaver.(interface {
+				RemoveReaction(messageID, userID, emoji string) error
+			}); ok {
+				err := messageSaver.RemoveReaction(wsMessage.MessageID, c.UserID, wsMessage.Emoji)
+				if err != nil {
+					log.Printf("Error removing reaction: %v", err)
+					continue
+				}
+				// Broadcast the reaction removal
+				c.Hub.Broadcast <- message
+			}
 		}
 	}
 }

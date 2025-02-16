@@ -90,6 +90,14 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content string,
 	// Add reply_to_message_id if present
 	if replyToUUID != nil {
 		msgData["reply_to_message_id"] = replyToMessageID
+		// Get the original message to include its content
+		if originalMsg, err := s.messageRepo.GetByID(replyToMessageID); err == nil {
+			msgData["reply_to_message"] = map[string]interface{}{
+				"id":        originalMsg.ID.String(),
+				"content":   originalMsg.Content,
+				"sender_id": originalMsg.SenderID.String(),
+			}
+		}
 	}
 
 	// Add receiver_id or group_id based on message type

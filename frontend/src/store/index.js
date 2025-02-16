@@ -24,21 +24,22 @@ export default createStore({
             state.messages = messages;
         },
         addMessage(state, message) {
-            state.messages.push(message);
-
+            // First check if this is a reply to an existing message
             if (message.reply_to_message_id) {
+                // Find the message being replied to
                 const originalMessageIndex = state.messages.findIndex(m => m.id === message.reply_to_message_id);
                 if (originalMessageIndex !== -1) {
-                    // Directly modify properties of the existing object.  Vue3's reactivity
-                    // system will detect changes to nested properties.
-                    state.messages[originalMessageIndex].reply_to_message = {
-                        id: message.id, // The ID of the *reply* message
-                        content: message.content,
-                        sender_id: message.sender_id,
-                        // Add other relevant fields from 'message' if needed
+                    // Add reply information to the new message
+                    message.reply_to_message = {
+                        id: message.reply_to_message_id,
+                        content: state.messages[originalMessageIndex].content,
+                        sender_id: state.messages[originalMessageIndex].sender_id
                     };
                 }
             }
+
+            // Add the new message to the messages array
+            state.messages.push(message);
         },
         addMessages(state, newMessages) {
             // Add new messages while maintaining order (newest first)
@@ -251,6 +252,9 @@ export default createStore({
             const count = stringId ? (state.unreadCounts[stringId] || 0) : 0;
             console.log(`Getting unread count for ${stringId}:`, count);
             return count;
+        },
+        getUserById: (state) => (userId) => {
+            return state.usersOnline.find(user => user.id === userId);
         }
     },
 });
