@@ -33,7 +33,7 @@
             <button class="action-button" @click="replyToMessage(message)" title="Reply">
               ↩️
             </button>
-            <button class="action-button" @click="toggleReactionPicker(message)" title="React">
+            <button class="action-button" @click.stop="toggleReactionPicker(message)" title="React">
               😀
             </button>
           </div>
@@ -42,13 +42,13 @@
           <div v-if="showReactionPicker && selectedMessageId === message.id"
                class="reaction-picker"
                v-click-outside="closeReactionPicker">
-    <span v-for="emoji in availableReactions"
-          :key="emoji"
-          @click="addReaction(message, emoji)"
-          :class="{ 'selected': hasUserReactedWithEmoji(message, emoji) }"
-          class="emoji-option">
-      {{ emoji }}
-    </span>
+            <span v-for="emoji in availableReactions"
+                  :key="emoji"
+                  @click="addReaction(message, emoji)"
+                  :class="{ 'selected': hasUserReactedWithEmoji(message, emoji) }"
+                  class="emoji-option">
+                {{ emoji }}
+            </span>
           </div>
         </div>
       </div>
@@ -77,6 +77,7 @@ export default {
     'click-outside': {
       mounted(el, binding) {
         el._clickOutside = (event) => {
+          console.log('Click detected:', event); // ADD THIS LINE
           if (!(el === event.target || el.contains(event.target))) {
             binding.value(event);
           }
@@ -96,7 +97,7 @@ export default {
     const messagesContainer = ref(null);
     const currentUser = computed(() => store.state.user);
 
-    const availableReactions = ['👍', '❤️', '😮', '😢', '😠'];
+    const availableReactions = ['👍', '❤️','😂', '😮', '😢', '😠'];
 
     // Scroll to bottom when new messages arrive
     watch(() => props.messages, async () => {
@@ -115,16 +116,23 @@ export default {
     };
 
     const closeReactionPicker = () => {
+      console.log('closeReactionPicker called'); // ADD THIS
       showReactionPicker.value = false;
       selectedMessageId.value = null;
     };
 
     const toggleReactionPicker = (message) => {
+      console.log('toggleReactionPicker called with message:', message); // ADD THIS
+      console.log('Current selectedMessageId:', selectedMessageId.value); // ADD THIS
+
       if (selectedMessageId.value === message.id) {
+        console.log('Closing picker (selectedMessageId matches)'); // ADD THIS
         closeReactionPicker();
       } else {
+        console.log('Opening picker (selectedMessageId does NOT match)'); // ADD THIS
         showReactionPicker.value = true;
         selectedMessageId.value = message.id;
+        console.log('New selectedMessageId:', selectedMessageId.value); // ADD THIS
       }
     };
 
@@ -403,6 +411,9 @@ export default {
   margin-bottom: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 1000; /* Make sure it appears above other elements */
+  flex-wrap: wrap; /* Allow emojis to wrap to the next line */
+  max-height: 200px; /* Set a maximum height */
+  overflow-y: auto; /* Add scrollbar if needed */
 }
 
 .emoji-option {
