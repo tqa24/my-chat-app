@@ -47,7 +47,8 @@ type WebSocketMessage struct {
 	Content          string `json:"content"`
 	MessageID        string `json:"message_id"`
 	ReplyToMessageID string `json:"reply_to_message_id"`
-	Emoji            string `json:"emoji"` // Add this for reactions
+	Emoji            string `json:"emoji"`
+	Status           string `json:"status"` // Add this for message status
 }
 
 // ReadPump pumps messages from the websocket connection to the hub.
@@ -144,6 +145,18 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 					continue
 				}
 				// Broadcast the reaction removal
+				c.Hub.Broadcast <- message
+			}
+		case "message_status":
+			if messageSaver, ok := messageSaver.(interface {
+				UpdateMessageStatus(messageID string, status string) error
+			}); ok {
+				err := messageSaver.UpdateMessageStatus(wsMessage.MessageID, wsMessage.Status)
+				if err != nil {
+					log.Printf("Error updating message status: %v", err)
+					continue
+				}
+				// Broadcast the status update
 				c.Hub.Broadcast <- message
 			}
 		}

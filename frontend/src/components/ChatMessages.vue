@@ -28,14 +28,12 @@
         </div>
 
         <!-- Message actions -->
-        <div class="message-actions"
-             @mouseover="hoveredMessageId = message.id"
-             @mouseleave="hoveredMessageId = null">
-          <div v-if="hoveredMessageId === message.id" class="action-buttons">
-            <button class="action-button" @click="replyToMessage(message)">
+        <div class="message-actions">
+          <div class="action-buttons">
+            <button class="action-button" @click="replyToMessage(message)" title="Reply">
               ↩️
             </button>
-            <button class="action-button" @click="toggleReactionPicker(message)">
+            <button class="action-button" @click="toggleReactionPicker(message)" title="React">
               😀
             </button>
           </div>
@@ -44,18 +42,21 @@
           <div v-if="showReactionPicker && selectedMessageId === message.id"
                class="reaction-picker"
                v-click-outside="closeReactionPicker">
-            <span v-for="emoji in availableReactions"
-                  :key="emoji"
-                  @click="addReaction(message, emoji)"
-                  :class="{ 'selected': hasUserReactedWithEmoji(message, emoji) }"
-                  class="emoji-option">
-              {{ emoji }}
-            </span>
+    <span v-for="emoji in availableReactions"
+          :key="emoji"
+          @click="addReaction(message, emoji)"
+          :class="{ 'selected': hasUserReactedWithEmoji(message, emoji) }"
+          class="emoji-option">
+      {{ emoji }}
+    </span>
           </div>
         </div>
       </div>
       <div class="message-info">
         <small>{{ formatTime(message.created_at) }}</small>
+        <span class="message-status" :class="message.status">
+        {{ getStatusIcon(message.status) }}
+      </span>
       </div>
     </div>
   </div>
@@ -240,6 +241,15 @@ export default {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
+    const getStatusIcon = (status) => {
+      switch (status) {
+        case 'sent': return '✓';
+        case 'delivered': return '✓✓';
+        case 'read': return '✓✓';
+        default: return '';
+      }
+    };
+
     return {
       currentUser,
       showReactionPicker,
@@ -259,7 +269,8 @@ export default {
       handleReactionClick,
       getReactionUsers,
       replyToMessage,
-      scrollToMessage
+      scrollToMessage,
+      getStatusIcon
     };
   }
 };
@@ -312,25 +323,31 @@ export default {
 .message-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   margin-top: 4px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  position: relative;
 }
-
+.message:hover .message-actions {
+  opacity: 1;
+}
 .action-button {
   background: none;
   border: none;
-  color: inherit;
-  cursor: pointer;
   padding: 2px 6px;
-  font-size: 0.9em;
-  opacity: 0.7;
-  transition: opacity 0.2s;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
 }
 
 .action-button:hover {
-  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.1);
 }
-
+.action-buttons {
+  display: flex;
+  gap: 4px;
+}
 .reactions-container {
   display: flex;
   flex-wrap: wrap;
@@ -375,17 +392,17 @@ export default {
 
 .reaction-picker {
   position: absolute;
-  bottom: 100%;
+  bottom: 100%; /* Position above the message */
   left: 0;
   background-color: white;
   border: 1px solid #ddd;
   border-radius: 8px;
-  padding: 4px;
+  padding: 8px;
   display: flex;
-  gap: 4px;
-  margin-bottom: 4px;
+  gap: 8px;
+  margin-bottom: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
+  z-index: 1000; /* Make sure it appears above other elements */
 }
 
 .emoji-option {
@@ -393,6 +410,7 @@ export default {
   padding: 4px;
   border-radius: 4px;
   transition: background-color 0.2s;
+  font-size: 1.2em; /* Make emojis bigger */
 }
 
 .emoji-option:hover {
@@ -401,8 +419,8 @@ export default {
 
 .emoji-option.selected {
   background-color: #e0e0e0;
-  font-weight: bold;
 }
+
 
 .message-info {
   font-size: 0.7em;
@@ -421,5 +439,24 @@ export default {
   100% {
     background-color: transparent;
   }
+}
+.message-status {
+  font-size: 0.8em;
+  margin-left: 4px;
+}
+
+.message-status.sent {
+  color: #999;
+}
+
+.message-status.delivered {
+  color: #666;
+}
+
+.message-status.read {
+  color: #0084ff;
+}
+.sent .action-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
 }
 </style>

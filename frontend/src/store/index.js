@@ -152,6 +152,12 @@ export default createStore({
             newMessage.reactions = newReactions;
             state.messages.splice(messageIndex, 1, newMessage); // Replace the old message
         },
+        updateMessageStatus(state, { messageId, status }) {
+            const messageIndex = state.messages.findIndex(m => m.id === messageId);
+            if (messageIndex !== -1) {
+                state.messages[messageIndex].status = status;
+            }
+        },
     },
     actions: {
         login({ commit }, user) {
@@ -240,6 +246,9 @@ export default createStore({
         },
         toggleReaction({ commit }, payload) {
             commit('toggleReaction', payload);
+        },
+        updateMessageStatus({ commit }, { messageId, status }) {
+            commit('updateMessageStatus', { messageId, status });
         },
     },
     getters: {

@@ -157,8 +157,13 @@ func (s *chatService) GetGroupConversation(groupID string, pageStr, pageSizeStr 
 	return s.messageRepo.GetGroupConversation(groupID, pageSize, offset) // Return count as well
 }
 func (s *chatService) UpdateMessageStatus(messageID string, status string) error {
-	//TODO:
-	return nil
+	message, err := s.messageRepo.GetByID(messageID)
+	if err != nil {
+		return err
+	}
+
+	message.Status = status
+	return s.messageRepo.Update(message)
 }
 
 // AddReaction adds a reaction to a message.

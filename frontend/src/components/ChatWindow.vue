@@ -321,6 +321,17 @@ export default {
         });
       };
 
+      // handle message status updates
+      const updateMessageStatus = (messageId, status) => {
+        if (ws.value) {
+          ws.value.send(JSON.stringify({
+            type: 'message_status',
+            message_id: messageId,
+            status: status
+          }));
+        }
+      };
+
       ws.value.onmessage = (event) => {
         try {
           // Split the message if it contains multiple JSON objects
@@ -354,6 +365,7 @@ export default {
                   store.dispatch('addMessage', messageObj);
 
                   if (data.sender_id !== currentUser.value?.id) {
+                    updateMessageStatus(data.message_id, 'delivered');
                     if (data.group_id) {
                       if (!selectedGroup.value || data.group_id.toString() !== selectedGroup.value.id.toString()) {
                         store.dispatch('incrementUnreadCount', data.group_id.toString());
@@ -414,6 +426,13 @@ export default {
                 case "read_message":
                   break;
 
+                case 'message_status':
+                  store.dispatch('updateMessageStatus', {
+                    messageId: data.message_id,
+                    status: data.status
+                  });
+                  break;
+
                 default:
                   console.log("Unhandled message type:", data.type);
                   break;
@@ -428,7 +447,6 @@ export default {
           console.log("Raw message:", event.data);
         }
       };
-
 
       ws.value.onclose = () => {
         console.log("WebSocket disconnected");
