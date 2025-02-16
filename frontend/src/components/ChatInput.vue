@@ -18,17 +18,17 @@
 <script>
 import { ref, computed, watch, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
-let typingTimeout = null;
+
 export default {
   props:{
     receiverID: {
       type: String,
-      required: false, // Now optional
+      required: false,
       default: null,
     },
-    groupID: { // Add groupID prop
+    groupID: {
       type: String,
-      required: false, // Optional
+      required: false,
       default: null,
     }
   },
@@ -39,20 +39,22 @@ export default {
     const replyingTo = computed(() => store.state.replyingTo);
     const userIdToName = computed(() => {
       const map = {};
-      store.state.usersOnline.forEach(user => { // Use store.state.usersOnline
+      store.state.usersOnline.forEach(user => {
         map[user.id] = user.username;
       });
       return map;
     });
 
-    // Load draft from localStorage on component mount
+    // Typing indicator variables
+    let typingTimeout = null;
+
     const draftKey = computed(() => {
       if (props.groupID) {
         return `draft_group_${props.groupID}`;
       } else if (props.receiverID) {
         return `draft_user_${props.receiverID}`;
       }
-      return null; // No draft if no recipient/group
+      return null;
     });
 
     watch(draftKey, (newKey, oldKey) => {
@@ -64,79 +66,81 @@ export default {
       }
     });
 
+
+    // Clear the timeout when the component is unmounted
     onUnmounted(() => {
-      // Save draft when component is unmounted
       if (draftKey.value) {
         localStorage.setItem(draftKey.value, message.value);
       }
+      clearTimeout(typingTimeout);
     });
 
     const sendMessage = () => {
       if (message.value.trim() !== '') {
         let msg = {};
-        // Determine if it is a group message or direct message
         if(props.groupID){
           msg = {
             type: "new_message",
             sender_id: currentUser.value.id,
-            group_id: props.groupID, // Send group_id if set
+            group_id: props.groupID,
             content: message.value,
-            reply_to_message_id: replyingTo.value ? replyingTo.value.id : null, // Add reply_to_message_id
-
+            reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
           }
         } else {
           msg = {
             type: "new_message",
             sender_id: currentUser.value.id,
-            receiver_id: props.receiverID, // Send receiver_id if set
+            receiver_id: props.receiverID,
             content: message.value,
-            reply_to_message_id: replyingTo.value ? replyingTo.value.id : null, // Add reply_to_message_id
+            reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
           }
         }
-        store.state.ws.send(JSON.stringify(msg)) // Send over WebSocket
 
-        message.value = ''; // Clear input after sending
-        // Clear reply after sending
+        // Check if the WebSocket connection exists before sending
+        if (store.state.ws) {
+          store.state.ws.send(JSON.stringify(msg));
+        } else {
+          console.error("WebSocket connection is not available.");
+          // Consider showing an error message to the user or attempting to reconnect
+        }
+
+        message.value = '';
         store.commit('setReplyingTo', null);
       }
-      // Remove draft from local storage
       if(draftKey.value){
         localStorage.removeItem(draftKey.value)
       }
     };
-    const handleTyping = () => {
-      // Clear any existing timeout
-      clearTimeout(typingTimeout);
 
-      // Save draft to localStorage
+    const handleTyping = () => {
+      clearTimeout(typingTimeout); // Clear existing timeout
+
       if(draftKey.value){
         localStorage.setItem(draftKey.value, message.value)
       }
 
-
-      if(props.groupID || props.receiverID){
-        // Send "typing" event immediately
+      if((props.groupID || props.receiverID) && store.state.ws){ // Check ws exists
         let typingMsg = {};
         if(props.groupID){
           typingMsg = {
             type: "typing",
             sender_id: currentUser.value.id,
-            group_id: props.groupID, // Send group_id if set
-
+            group_id: props.groupID,
           }
         } else {
           typingMsg = {
             type: "typing",
             sender_id: currentUser.value.id,
-            receiver_id: props.receiverID, // Send receiver_id if set
-
+            receiver_id: props.receiverID,
           }
         }
+
         store.state.ws.send(JSON.stringify(typingMsg));
-        // Set a timeout to send "stop_typing" after a delay (e.g., 2 seconds)
+
         typingTimeout = setTimeout(() => {
           let stopTypingMsg = {};
-          if(props.groupID) {
+
+          if(props.groupID){
             stopTypingMsg = {
               type: "stop_typing",
               sender_id: currentUser.value.id,
@@ -149,22 +153,26 @@ export default {
               receiver_id: props.receiverID
             }
           }
-          store.state.ws.send(JSON.stringify(stopTypingMsg));
-        }, 2000); // 2 seconds
-      }
 
+          if (store.state.ws) { // Check ws before sending stop_typing
+            store.state.ws.send(JSON.stringify(stopTypingMsg));
+          }
+        }, 2000);
+      }
     };
+
 
     const cancelReply = () => {
       store.commit('setReplyingTo', null);
     }
 
-    return { message, sendMessage, handleTyping, replyingTo, cancelReply, userIdToName }; // Return replyingTo and cancelReply
+    return { message, sendMessage, handleTyping, replyingTo, cancelReply, userIdToName};
   }
 };
 </script>
 
 <style scoped>
+/* (Your existing styles - no changes needed here) */
 .chat-input {
   display: flex;
   flex-direction: column; /* Stack elements vertically */

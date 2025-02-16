@@ -102,6 +102,7 @@
 </template>
 
 <script>
+// frontend/src/components/ChatWindow.vue
 import ChatMessages from "./ChatMessages.vue";
 import ChatInput from "./ChatInput.vue";
 import {useStore} from "vuex";
@@ -116,17 +117,17 @@ export default {
   },
   setup() {
     const store = useStore();
-    const ws = ref(null);
+    // const ws = ref(null); // No longer needed as a ref here
     const currentUser = computed(() => store.getters.currentUser);
-    const selectedUser = ref(null); //Selected user to chat
-    const selectedGroup = ref(null); // Selected group to chat
+    const selectedUser = ref(null);
+    const selectedGroup = ref(null);
     const usersOnline = computed(() => store.getters.getUsersOnline);
     const typingUsers = computed(() => store.getters.typingUsers);
-    const searchQuery = ref(""); // Add search query
-    const userGroups = ref([]); // To store user's groups
-    const copyMessage = ref(""); // To Display copy message after copying
-    const showLeaveModal = ref(false); // Show leave group confirmation modal
-    const confirmLeaveGroup = () => { // Show leave group modal
+    const searchQuery = ref("");
+    const userGroups = ref([]);
+    const copyMessage = ref("");
+    const showLeaveModal = ref(false);
+    const confirmLeaveGroup = () => {
       showLeaveModal.value = true;
     };
     const leaveGroup = async () => {
@@ -137,24 +138,17 @@ export default {
           user_id: currentUser.value.id
         });
 
-        // Send leave group message through WebSocket
-        if (ws.value) {
-          ws.value.send(JSON.stringify({
+        // Send leave group message through WebSocket (check if ws exists)
+        if (store.state.ws) {
+          store.state.ws.send(JSON.stringify({
             type: "leave_group",
             group_id: selectedGroup.value.id
           }));
         }
 
-        // Remove group from userGroups
         userGroups.value = userGroups.value.filter(g => g.ID.toString() !== selectedGroup.value.id);
-
-        // Clear selected group
         selectedGroup.value = null;
-
-        // Clear messages
         store.dispatch('clearMessages');
-
-        // Show success message (optional)
         alert('You have left the group successfully');
       } catch (error) {
         console.error('Failed to leave group:', error);
@@ -164,19 +158,16 @@ export default {
       }
     };
 
-    // Pagination-related variables
-    const page= ref(1); // Start at page 1
-    const pageSize = ref(20); // 20 messages per page
-    const hasMore = ref(true); // Whether there are more messages to load
-    const loadingMore = ref(false); // Track loading state
+    const page= ref(1);
+    const pageSize = ref(20);
+    const hasMore = ref(true);
+    const loadingMore = ref(false);
     const messagesContainer = ref(null);
 
-    // Add scroll handler
     const handleScroll = () => {
       const container = messagesContainer.value;
       if (!container || loadingMore.value || !hasMore.value) return;
 
-      // Load more when scrolling near top
       if (container.scrollTop < 100) {
         loadMoreMessages();
       }
@@ -185,59 +176,44 @@ export default {
     onMounted(async () => {
       if (currentUser.value) {
         connectWebSocket();
-        await fetchAllUsers(); // Fetch all users when component mounts
-        await fetchUserGroups(); // Fetch user's groups
-        store.dispatch('initializeUnreadCounts'); // Initialize unread counts
-        debugUnreadCounts(); // Debug unread counts
+        await fetchAllUsers();
+        await fetchUserGroups();
+        store.dispatch('initializeUnreadCounts');
+        debugUnreadCounts();
       }
     });
 
+    // Clean up the WebSocket connection when the component is unmounted
     onBeforeUnmount(() => {
-      if (ws.value) {
-        ws.value.close();
+      if (store.state.ws) {
+        store.state.ws.close();
+        store.commit("setWs", null); // VERY IMPORTANT: Reset to null
       }
     });
 
-    watch(() => selectedGroup.value, (newGroup, oldGroup) => {
-      console.log('Selected group changed:', {
-        from: oldGroup?.id,
-        to: newGroup?.id
-      });
-
+    watch(() => selectedGroup.value, (newGroup) => {
       if (newGroup) {
-        console.log('Current unread count for new group:',
-            store.getters.getUnreadCount(newGroup.id));
         store.dispatch('markAsRead', newGroup.id);
       }
     });
 
     const debugUnreadCounts = () => {
-      const counts = store.state.unreadCounts;
-      console.log('Current unread counts:', counts);
       userGroups.value.forEach(group => {
-        console.log(`Group ${group.Name} (${group.ID}):`,
-            store.getters.getUnreadCount(group.ID));
+        store.getters.getUnreadCount(group.ID);
       });
     };
 
-    // --- User selection ---
     const startChatWithUser = async (user) => {
       selectedUser.value = user;
-      selectedGroup.value = null; // Clear selected group
-      store.dispatch("clearMessages"); // Clear previous messages
-      store.dispatch('markAsRead', user.id); // Mark messages as read
-      page.value = 1;          // Reset page number
-      hasMore.value = true;     // Reset hasMore
-      await fetchMessages(); // Fetch messages for the new conversation
+      selectedGroup.value = null;
+      store.dispatch("clearMessages");
+      store.dispatch('markAsRead', user.id);
+      page.value = 1;
+      hasMore.value = true;
+      await fetchMessages();
     };
 
-    // --- Group Selection ---
     const startChatWithGroup = async (group) => {
-      console.log('Starting group chat with:', {
-        group,
-        groupId: group.ID,
-        currentUnreadCount: store.getters.getUnreadCount(group.ID)
-      });
 
       selectedGroup.value = {
         id: group.ID.toString(),
@@ -247,19 +223,16 @@ export default {
 
       selectedUser.value = null;
       store.dispatch('clearMessages');
-
-      // Mark messages as read
       store.dispatch('markAsRead', group.ID.toString());
 
-      // Join group via WebSocket
-      if (ws.value && group.ID) {
-        ws.value.send(JSON.stringify({
+      // Join group via WebSocket (Check if ws exists)
+      if (store.state.ws && group.ID) {
+        store.state.ws.send(JSON.stringify({
           type: "join_group",
           group_id: group.ID
         }));
       }
 
-      // Reset pagination
       page.value = 1;
       hasMore.value = true;
 
@@ -268,30 +241,23 @@ export default {
       }
     };
 
-
-    // Add format function for unread counts
     const formatUnreadCount = (count) => {
       return count > 9 ? '9+' : count.toString();
     };
 
-    // --- Fetch Users ---
     const fetchAllUsers = async () => {
-      //Get all user and add to user online
       axios.get(`http://localhost:8080/users`).then(res => {
         const users = res.data.map(user => ({
           id: user.id,
           username: user.username,
-          status: 'offline', // Assume offline initially
+          status: 'offline',
         }));
-        // Remove current user
         const filteredUsers = users.filter(user => user.id !== currentUser.value?.id);
         store.dispatch('setUsersOnline', filteredUsers)
-      }).catch(err => {
-        console.error("Error", err)
+      }).catch(() => {
       })
     }
 
-    // --- Fetch User's Groups ---
     const fetchUserGroups = async () => {
       try {
         const response = await axios.get(
@@ -304,27 +270,25 @@ export default {
     };
 
     const connectWebSocket = () => {
-      ws.value = new WebSocket(
+      const ws = new WebSocket(
           `ws://localhost:8080/ws?userID=${currentUser.value?.id}`
       );
-      store.commit("setWs", ws.value);
-      ws.value.onopen = () => {
+      store.commit("setWs", ws); // Store the WebSocket instance in Vuex
+
+      ws.onopen = () => {
         console.log("WebSocket connected");
-        // Send "online_status" event
-        ws.value.send(JSON.stringify({type: "online_status"}));
-        // Join all groups
+        ws.send(JSON.stringify({type: "online_status"}));
         userGroups.value.forEach(group => {
-          ws.value.send(JSON.stringify({
+          ws.send(JSON.stringify({
             type: "join_group",
             group_id: group.ID
           }));
         });
       };
 
-      // handle message status updates
       const updateMessageStatus = (messageId, status) => {
-        if (ws.value) {
-          ws.value.send(JSON.stringify({
+        if (ws) { // Check ws
+          ws.send(JSON.stringify({
             type: 'message_status',
             message_id: messageId,
             status: status
@@ -332,17 +296,13 @@ export default {
         }
       };
 
-      ws.value.onmessage = (event) => {
+      ws.onmessage = (event) => {
         try {
-          // Split the message if it contains multiple JSON objects
           const messages = event.data.split('\n').filter(msg => msg.trim());
 
           messages.forEach(message => {
             try {
               const data = JSON.parse(message);
-              console.log("Received:", data);
-
-              // Move messageObj declaration outside switch
               let messageObj = null;
 
               switch (data.type) {
@@ -439,44 +399,38 @@ export default {
               }
             } catch (innerError) {
               console.error("Error parsing individual message:", innerError);
-              console.log("Problematic message:", message);
             }
           });
         } catch (error) {
           console.error("Error handling WebSocket message:", error);
-          console.log("Raw message:", event.data);
         }
       };
 
-      ws.value.onclose = () => {
+      ws.onclose = () => {
         console.log("WebSocket disconnected");
-        store.commit("setWs", null);
-        // Attempt to reconnect (optional)
-        setTimeout(connectWebSocket, 5000); // Retry after 5 seconds
+        store.commit("setWs", null); // Set ws to null when closed
+        setTimeout(connectWebSocket, 5000);
       };
 
-      ws.value.onerror = (error) => {
+      ws.onerror = (error) => {
         console.error("WebSocket error:", error);
       };
     };
     const fetchMessages = async () => {
-      // Only fetch messages if a user is selected
       if (selectedUser.value) {
         try {
           const response = await axios.get(
               `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}&page=${page.value}&pageSize=${pageSize.value}`
           );
-          // Add new mess to the top of list message
-          store.commit('addMessages', response.data.messages.reverse()); // Append new messages
-          hasMore.value = (page.value * pageSize.value) < response.data.total; // Check for more
+          store.commit('addMessages', response.data.messages.reverse());
+          hasMore.value = (page.value * pageSize.value) < response.data.total;
         } catch (error) {
           console.error("Failed to fetch messages:", error);
         } finally {
-          loadingMore.value = false; // Reset loading state
+          loadingMore.value = false;
         }
       }
     };
-    // Refetch group message
     const fetchGroupMessages = async () => {
       if (selectedGroup.value && selectedGroup.value.id) {
         try {
@@ -499,7 +453,7 @@ export default {
       loadingMore.value = true;
 
       try {
-        page.value++; // Increment page before fetching
+        page.value++;
 
         if (selectedUser.value) {
           await fetchMessages();
@@ -509,25 +463,23 @@ export default {
 
       } catch (error) {
         console.error('Error loading more messages:', error);
-        page.value--; // Revert page increment on error
+        page.value--;
       } finally {
         loadingMore.value = false;
       }
     };
 
-    // Computed property for filtered users
     const filteredUsers = computed(() => {
       if (!searchQuery.value) {
-        return usersOnline.value; // Return all users if no search query
+        return usersOnline.value;
       }
       return usersOnline.value.filter((user) =>
           user.username.toLowerCase().includes(searchQuery.value.toLowerCase())
       );
     });
-    // Computed property for filtered messages based on selected user/group
+
     const filteredMessages = computed(() => {
       if (selectedUser.value) {
-        // Filter messages for direct chat with the selected user
         return store.getters.allMessages.filter(
             (message) =>
                 (message.sender_id === currentUser.value?.id &&
@@ -536,12 +488,11 @@ export default {
                     message.receiver_id === currentUser.value?.id)
         );
       } else if (selectedGroup.value) {
-        // Filter messages for the selected group
         return store.getters.allMessages.filter(
             (message) => message.group_id === selectedGroup.value.id
         );
       }
-      return []; // Return an empty array if no user or group is selected
+      return [];
     });
     const copyCode = (code) => {
       navigator.clipboard.writeText(code)
@@ -551,8 +502,7 @@ export default {
               copyMessage.value = '';
             }, 2000);
           })
-          .catch(err => {
-            console.error('Failed to copy code: ', err);
+          .catch(() => {
             copyMessage.value = 'Failed to copy code';
             setTimeout(() => {
               copyMessage.value = '';
@@ -562,7 +512,7 @@ export default {
 
     return {
       currentUser,
-      ws,
+      // ws, // No need to return this directly
       connectWebSocket,
       selectedUser,
       selectedGroup,
@@ -582,7 +532,6 @@ export default {
       handleScroll,
       loadingMore,
       formatUnreadCount,
-      // Refetch group message and user message
       fetchGroupMessages,
       fetchMessages,
       getUnreadCount: (id) => store.getters.getUnreadCount(id),
