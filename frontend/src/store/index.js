@@ -123,6 +123,34 @@ export default createStore({
         setReplyingTo(state, message) { // NEW: Set the replyingTo message
             state.replyingTo = message;
         },
+
+        toggleReaction(state, { messageId, reaction, add }) {
+            const messageIndex = state.messages.findIndex(m => m.id === messageId);
+            if (messageIndex === -1) return; // Message not found locally
+
+            // Create a deep copy to avoid direct mutation warnings, and ensure reactivity
+            const newMessage = { ...state.messages[messageIndex] };
+            const newReactions = newMessage.reactions ? { ...newMessage.reactions } : {};
+
+            if (add) {
+                if (!newReactions[reaction]) {
+                    newReactions[reaction] = [];
+                }
+                if (!newReactions[reaction].includes(state.user.id)) {
+                    newReactions[reaction].push(state.user.id);
+                }
+            } else {
+                if (newReactions[reaction]) {
+                    newReactions[reaction] = newReactions[reaction].filter(id => id !== state.user.id);
+                    if (newReactions[reaction].length === 0) {
+                        delete newReactions[reaction]; // Remove if empty
+                    }
+                }
+            }
+
+            newMessage.reactions = newReactions;
+            state.messages.splice(messageIndex, 1, newMessage); // Replace the old message
+        },
     },
     actions: {
         login({ commit }, user) {
@@ -208,6 +236,9 @@ export default createStore({
                     console.error("Failed to fetch messages:", error);
                 }
             }
+        },
+        toggleReaction({ commit }, payload) {
+            commit('toggleReaction', payload);
         },
     },
     getters: {

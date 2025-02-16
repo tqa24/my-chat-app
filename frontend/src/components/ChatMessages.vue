@@ -97,16 +97,15 @@ export default {
 
     const formatTime = (timestamp) => format(new Date(timestamp), 'HH:mm');
 
-    const toggleReaction = async (message, reaction) => {
-      // We'll consolidate add/remove into one function.
-      await addReaction(message, reaction)
-    };
-
-    const addReaction = async (message, reaction) => { //Separate add reaction
+    const addReaction = async (message, reaction) => {
       try {
         const userReacted = message.reactions[reaction]?.includes(currentUser.value.id);
+        const shouldAdd = !userReacted; // Calculate *before* the optimistic update
 
-        if (userReacted) {
+        // Optimistically update the UI *before* sending the request.
+        store.dispatch('toggleReaction', { messageId: message.id, reaction, add: shouldAdd });
+
+        if (!shouldAdd) { // Use the pre-calculated value
           // Remove reaction
           await axios.delete(`http://localhost:8080/messages/${message.id}/react`, {
             data: { user_id: currentUser.value.id, reaction: reaction }
@@ -119,15 +118,17 @@ export default {
           });
         }
 
-        if (store.state.selectedGroup != null) {
-          store.dispatch('fetchGroupMessages');
-        } else {
-          store.dispatch('fetchMessages');
-        }
+        // No need to fetch messages here; optimistic update handles it
+
       } catch (error) {
         console.error('Failed to toggle reaction:', error);
+        // If the request fails, revert the optimistic update
+        const userReacted = message.reactions[reaction]?.includes(currentUser.value.id); //re-calculate
+        const shouldAdd = !userReacted;//re-calculate
+        store.dispatch('toggleReaction', { messageId: message.id, reaction, add: !shouldAdd }); // Revert: Use the OPPOSITE of shouldAdd
       }
     };
+
     const replyToMessage = (message) => {
       store.commit('setReplyingTo', message);
     };
@@ -138,7 +139,7 @@ export default {
 
     return {
       reversedMessages, messages, currentUser, messageClass, formatTime,
-      userIdToName, toggleReaction, replyToMessage, hoveredMessage,
+      userIdToName, replyToMessage, hoveredMessage,
       showReactionPicker, showMessageOptions, hasReactions, addReaction
     };
   }
