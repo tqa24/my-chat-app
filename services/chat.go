@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"my-chat-app/models"
 	"my-chat-app/repositories"
 	"my-chat-app/websockets"
@@ -13,7 +14,10 @@ import (
 )
 
 type ChatService interface {
-	SendMessage(senderID, receiverID, groupID, content string, replyToMessageID string) error
+	// Keep this original SendMessage with all parameters for use within your service
+	SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64) error
+	// *** Add SendMessageForWebSocket to the interface ***
+	SendMessageForWebSocket(senderID, receiverID, groupID, content, replyToMessageID string) error
 	GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	UpdateMessageStatus(messageID string, status string) error
@@ -33,7 +37,18 @@ func NewChatService(messageRepo repositories.MessageRepository, groupRepo reposi
 	return &chatService{messageRepo, groupRepo, userRepo, hub}
 }
 
-func (s *chatService) SendMessage(senderID, receiverID, groupID, content string, replyToMessageID string) error {
+// *** NEW:  This method matches the requirements for handling WebSocket messages ***
+func (s *chatService) SendMessageForWebSocket(senderID, receiverID, groupID, content, replyToMessageID string) error {
+	// Call the *full* SendMessage, with default values for file-related parameters.
+	return s.SendMessage(senderID, receiverID, groupID, content, replyToMessageID, "", "", "", 0)
+}
+
+func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64) error {
+
+	// *** IMPORTANT: Log the received arguments ***
+	log.Printf("chatService.SendMessage: senderID=%s, receiverID=%s, groupID=%s, content=%s, replyToMessageID=%s, fileName=%s, filePath=%s, fileType=%s, fileSize=%d",
+		senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType, fileSize)
+
 	senderUUID, err := uuid.Parse(senderID)
 	if err != nil {
 		return fmt.Errorf("invalid sender ID: %v", err)
@@ -73,6 +88,11 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content string,
 		Content:          content,
 		Status:           "sent",
 		ReplyToMessageID: replyToUUID, // Set ReplyToMessageID
+		// *** NEW: Set File Fields ***
+		FileName: fileName,
+		FilePath: filePath,
+		FileType: fileType,
+		FileSize: fileSize,
 	}
 
 	err = s.messageRepo.Create(message)
@@ -96,6 +116,11 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content string,
 		"content":         content,
 		"message_id":      message.ID.String(),
 		"created_at":      message.CreatedAt.Format("2006-01-02 15:04:05"),
+		// *** Include file info in the broadcast ***
+		"file_name": fileName,
+		"file_path": filePath,
+		"file_type": fileType,
+		"file_size": fileSize,
 	}
 	// Add reply_to_message_id if present
 	if replyToUUID != nil {

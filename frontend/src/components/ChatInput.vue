@@ -5,6 +5,7 @@
       <span>{{ replyingTo.content }}</span>
       <button @click="cancelReply">Cancel</button>
     </div>
+    <FileUpload @file-uploaded="handleFileUploaded" @file-removed="removeFile" />
     <textarea
         v-model="message"
         @keydown.enter.prevent="sendMessage"
@@ -18,8 +19,12 @@
 <script>
 import { ref, computed, watch, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
+import FileUpload from './FileUpload.vue'; // Import the new component
 
 export default {
+  components: {
+    FileUpload, // Register FileUpload
+  },
   props:{
     receiverID: {
       type: String,
@@ -44,6 +49,9 @@ export default {
       });
       return map;
     });
+
+    // *** NEW: File upload state ***
+    const uploadedFile = ref(null);
 
     // Typing indicator variables
     let typingTimeout = null;
@@ -74,9 +82,15 @@ export default {
       }
       clearTimeout(typingTimeout);
     });
+    const handleFileUploaded = (fileInfo) => {
+      uploadedFile.value = fileInfo;
+    };
+    const removeFile = () => {
+      uploadedFile.value = null;
+    }
 
     const sendMessage = () => {
-      if (message.value.trim() !== '') {
+      if (message.value.trim() !== '' || uploadedFile.value) { // Send even if only file
         let msg = {};
         if(props.groupID){
           msg = {
@@ -85,6 +99,11 @@ export default {
             group_id: props.groupID,
             content: message.value,
             reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
+            // *** Add file information ***
+            file_name: uploadedFile.value ? uploadedFile.value.name : null,
+            file_path: uploadedFile.value ? uploadedFile.value.path : null,
+            file_type: uploadedFile.value ? uploadedFile.value.type : null,
+            file_size: uploadedFile.value ? uploadedFile.value.size : null,
           }
         } else {
           msg = {
@@ -93,10 +112,16 @@ export default {
             receiver_id: props.receiverID,
             content: message.value,
             reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
+            // *** Add file information ***
+            file_name: uploadedFile.value ? uploadedFile.value.name : null,
+            file_path: uploadedFile.value ? uploadedFile.value.path : null,
+            file_type: uploadedFile.value ? uploadedFile.value.type : null,
+            file_size: uploadedFile.value ? uploadedFile.value.size : null,
           }
         }
 
         // Check if the WebSocket connection exists before sending
+        console.log("Sending message:", msg);
         if (store.state.ws) {
           store.state.ws.send(JSON.stringify(msg));
         } else {
@@ -106,6 +131,7 @@ export default {
 
         message.value = '';
         store.commit('setReplyingTo', null);
+        uploadedFile.value = null; // Clear the file after sending
       }
       if(draftKey.value){
         localStorage.removeItem(draftKey.value)
@@ -166,7 +192,7 @@ export default {
       store.commit('setReplyingTo', null);
     }
 
-    return { message, sendMessage, handleTyping, replyingTo, cancelReply, userIdToName};
+    return { message, sendMessage, handleTyping, replyingTo, cancelReply, userIdToName, handleFileUploaded, removeFile};
   }
 };
 </script>

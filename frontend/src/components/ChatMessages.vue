@@ -15,6 +15,20 @@
           <span>{{ getReplyPreview(message.reply_to_message) }}</span>
         </div>
 
+        <!-- *** Display File/Image *** -->
+        <div v-if="message.file_name" class="file-attachment">
+          <div v-if="isImage(message.file_type)" class="image-preview">
+            <img :src="message.file_path" :alt="message.file_name" @click="showFullImage(message.file_path)" />
+          </div>
+          <div v-else class="file-info">
+            <i class="fas fa-file"></i> <!-- Generic file icon -->
+            <span>{{ message.file_name }} ({{ formatFileSize(message.file_size) }})</span>
+            <a :href="message.file_path" :download="message.file_name" class="download-link">
+              <i class="fas fa-download"></i> Download
+            </a>
+          </div>
+        </div>
+
         <div class="message-text">{{ message.content }}</div>
 
         <!-- Reactions section -->
@@ -64,6 +78,13 @@
       </span>
       </div>
     </div>
+    <!-- Full Image Modal (NEW) -->
+    <div v-if="showModal" class="modal-overlay" @click="closeModal">
+      <div class="modal-content" @click.stop>
+        <img :src="modalImageUrl" alt="Full Image" />
+        <button @click="closeModal" class="close-button">Close</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -103,6 +124,19 @@ export default {
     const currentUser = computed(() => store.state.user);
 
     const availableReactions = ['👍', '❤️','😂', '😮', '😢', '😠'];
+    // *** NEW: For Full Image Modal ***
+    const showModal = ref(false);
+    const modalImageUrl = ref('');
+
+    const showFullImage = (imageUrl) => {
+      modalImageUrl.value = imageUrl;
+      showModal.value = true;
+    };
+
+    const closeModal = () => {
+      modalImageUrl.value = '';
+      showModal.value = false;
+    };
 
     // Scroll to bottom when new messages arrive
     watch(() => props.messages, async () => {
@@ -273,6 +307,20 @@ export default {
       return sender ? sender.username : 'Unknown User';
     };
 
+    // *** NEW: Check if a file is an image ***
+    const isImage = (fileType) => {
+      return fileType.startsWith('image/');
+    };
+
+    // Helper function to format file sizes (same as in FileUpload.vue)
+    const formatFileSize = (bytes) => {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
     return {
       currentUser,
       showReactionPicker,
@@ -295,6 +343,12 @@ export default {
       scrollToMessage,
       getStatusIcon,
       getSenderUsername, // Add to returned object
+      isImage, // Add isImage method
+      formatFileSize, // Add formatFileSize
+      showModal,       // For full image modal
+      modalImageUrl,  // For full image modal
+      showFullImage,  // For full image modal
+      closeModal,      // For full image modal
     };
   }
 };
@@ -308,7 +362,73 @@ export default {
   margin-bottom: 2px;
 }
 
-/* ... (rest of your existing styles) ... */
+/* New styles for file attachments */
+.file-attachment {
+  margin-bottom: 5px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+  display: flex; /* Use flexbox for layout */
+  align-items: center; /* Vertically center items */
+}
+.file-info{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.image-preview img {
+  max-width: 100%; /* Make sure images don't overflow */
+  max-height: 200px; /* Limit image height */
+  border-radius: 4px;
+  cursor: pointer; /* Indicate it's clickable */
+}
+.download-link {
+  color: #007bff;
+  text-decoration: none;
+  margin-left: 8px;
+}
+.download-link i{
+  margin-right: 4px;
+}
+/* Modal Styles (NEW) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000; /* Ensure it's on top */
+}
+
+.modal-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  max-width: 90%; /* Limit width */
+  max-height: 90%; /* Limit height */
+  overflow: auto;   /* Add scroll if content overflows */
+  position: relative; /* For positioning the close button */
+}
+.modal-content img {
+  max-width: 100%;  /* For responsive images within modal */
+  max-height: 70vh; /* Limit image height within modal */
+}
+
+.close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 1.2em;
+  cursor: pointer;
+}
+
 .messages {
   display: flex;
   flex-direction: column;
@@ -469,7 +589,6 @@ export default {
 
 @keyframes highlight {
   0% {
-    background-color: rgba;
     background-color: rgba(255, 255, 0, 0.5);
   }
   100% {

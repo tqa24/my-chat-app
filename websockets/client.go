@@ -49,10 +49,15 @@ type WebSocketMessage struct {
 	ReplyToMessageID string `json:"reply_to_message_id"`
 	Emoji            string `json:"emoji"`
 	Status           string `json:"status"` // Add this for message status
+	// *** NEW: File fields ***
+	FileName string `json:"file_name"`
+	FilePath string `json:"file_path"`
+	FileType string `json:"file_type"`
+	FileSize int64  `json:"file_size"`
 }
 
 // ReadPump pumps messages from the websocket connection to the hub.
-func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
+func (c *Client) ReadPump(messageSaver MessageSaver) {
 	defer func() {
 		// When client disconnects, send offline status before unregistering
 		offlineMsg := []byte(`{"type": "offline_status", "user_id": "` + c.UserID + `"}`)
@@ -80,23 +85,43 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 
 		switch wsMessage.Type {
 		case "new_message":
-			// Use the MessageSaver interface to save the message
-			//Check if receiver or group
-			if wsMessage.ReceiverID != "" {
-				err := messageSaver.SendMessage(wsMessage.SenderID, wsMessage.ReceiverID, "", wsMessage.Content, wsMessage.ReplyToMessageID) // Pass replyToMessageID
-				if err != nil {
-					log.Printf("Error saving message: %v", err)
-					continue
-				}
-			} else if wsMessage.GroupID != "" {
-				err := messageSaver.SendMessage(wsMessage.SenderID, "", wsMessage.GroupID, wsMessage.Content, wsMessage.ReplyToMessageID) //Pass replyToMessageID
-				if err != nil {
-					log.Printf("Error saving message: %v", err)
-					continue
+			if chatService, ok := messageSaver.(interface {
+				SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64) error
+			}); ok {
+				// Call SendMessage with all parameters including file information
+				if wsMessage.ReceiverID != "" {
+					err := chatService.SendMessage(
+						wsMessage.SenderID,
+						wsMessage.ReceiverID,
+						"",
+						wsMessage.Content,
+						wsMessage.ReplyToMessageID,
+						wsMessage.FileName,
+						wsMessage.FilePath,
+						wsMessage.FileType,
+						wsMessage.FileSize,
+					)
+					if err != nil {
+						log.Printf("Error saving message: %v", err)
+					}
+				} else if wsMessage.GroupID != "" {
+					err := chatService.SendMessage(
+						wsMessage.SenderID,
+						"",
+						wsMessage.GroupID,
+						wsMessage.Content,
+						wsMessage.ReplyToMessageID,
+						wsMessage.FileName,
+						wsMessage.FilePath,
+						wsMessage.FileType,
+						wsMessage.FileSize,
+					)
+					if err != nil {
+						log.Printf("Error saving message: %v", err)
+					}
 				}
 			} else {
-				log.Printf("Error saving message: Missing receiverID and groupID")
-				continue
+				log.Printf("Error: messageSaver does not implement SendMessage")
 			}
 
 		case "typing": // Handle typing indicator
@@ -131,7 +156,7 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 					continue
 				}
 				// Broadcast the reaction update
-				//c.Hub.Broadcast <- message
+				//c.Hub.Broadcast <- message // Remove this.  Backend handles it.
 			}
 
 		case "remove_reaction":
@@ -145,7 +170,7 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 					continue
 				}
 				// Broadcast the reaction removal
-				//c.Hub.Broadcast <- message
+				//c.Hub.Broadcast <- message // Remove this.  Backend handles it.
 			}
 		case "message_status":
 			if messageSaver, ok := messageSaver.(interface {

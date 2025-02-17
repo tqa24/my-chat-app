@@ -37,14 +37,13 @@ func main() {
 
 	// Initialize services
 	authService := services.NewAuthService(userRepo)
-	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub) // Add Group Service
+	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub)
 	groupService := services.NewGroupService(groupRepo, userRepo, hub)
 
 	// Initialize handlers
 	authHandler := api.NewAuthHandler(authService, userRepo)
 	chatHandler := api.NewChatHandler(chatService, hub)
 	groupHandler := api.NewGroupHandler(groupService) // Add Group Handler
-
 	// Initialize Gin router
 	r := gin.Default()
 	//CORS
@@ -69,6 +68,10 @@ func main() {
 	r.GET("/groups/:id/messages", chatHandler.GetGroupConversation) // For get group conversation
 	r.POST("/messages/:id/react", chatHandler.AddReaction)          // NEW: Add reaction
 	r.DELETE("/messages/:id/react", chatHandler.RemoveReaction)     // NEW: Remove reaction
+	// *** NEW: File Upload Route ***
+	r.POST("/upload", chatHandler.UploadFile)
+	// *** NEW: Serve uploaded files statically ***
+	r.Static("/uploads", "./uploads")
 
 	// Start the server
 	log.Printf("Server listening on port %s", config.AppConfig.AppPort)

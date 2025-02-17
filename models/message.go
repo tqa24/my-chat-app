@@ -22,6 +22,11 @@ type Message struct {
 	Reactions        datatypes.JSON `gorm:"type:jsonb" json:"reactions"`                                                 // NEW: Reactions as JSONB
 	ReplyToMessageID *uuid.UUID     `gorm:"type:uuid" json:"reply_to_message_id"`                                        // NEW: Reply-to ID
 	ReplyToMessage   *Message       `gorm:"foreignKey:ReplyToMessageID;references:ID" json:"reply_to_message,omitempty"` // NEW: Include the replied-to message (optional)
+	// *** NEW: File Upload Fields ***
+	FileName string `gorm:"type:varchar(255)" json:"file_name"` // Original filename
+	FilePath string `gorm:"type:varchar(255)" json:"file_path"` // Path to stored file (relative to upload dir)
+	FileType string `gorm:"type:varchar(100)" json:"file_type"` // image/jpeg, application/pdf, etc.
+	FileSize int64  `gorm:"type:bigint" json:"file_size"`       // File size in bytes
 }
 
 // BeforeCreate hook to generate UUID for the message ID.
