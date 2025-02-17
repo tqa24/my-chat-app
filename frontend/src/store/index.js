@@ -133,6 +133,36 @@ export default createStore({
                 state.messages[messageIndex].status = status;
             }
         },
+        updateReaction(state, { messageId, userId, emoji, type }) {
+            const messageIndex = state.messages.findIndex(m => m.id === messageId);
+            if (messageIndex === -1) return;
+
+            const message = { ...state.messages[messageIndex] };
+            if (!message.reactions) {
+                message.reactions = {};
+            }
+
+            if (type === "reaction_added") {
+                if (!message.reactions[emoji]) {
+                    message.reactions[emoji] = [];
+                }
+                if (!message.reactions[emoji].includes(userId)) {
+                    message.reactions[emoji].push(userId);
+                }
+            } else if (type === "reaction_removed") {
+                if (message.reactions[emoji]) {
+                    const index = message.reactions[emoji].indexOf(userId);
+                    if (index > -1) {
+                        message.reactions[emoji].splice(index, 1);
+                        if (message.reactions[emoji].length === 0) {
+                            delete message.reactions[emoji];
+                        }
+                    }
+                }
+            }
+
+            state.messages.splice(messageIndex, 1, message);
+        },
     },
     actions: {
         login({ commit }, user) {
@@ -216,6 +246,9 @@ export default createStore({
         },
         updateMessageStatus({ commit }, { messageId, status }) {
             commit('updateMessageStatus', { messageId, status });
+        },
+        updateReaction({ commit }, payload) {
+            commit('updateReaction', payload);
         },
     },
     getters: {

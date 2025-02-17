@@ -208,7 +208,51 @@ func (s *chatService) AddReaction(messageID, userID, reaction string) error {
 		return fmt.Errorf("error when marshal reactions")
 	}
 	message.Reactions = datatypes.JSON(updatedReactions)
-	return s.messageRepo.Update(message) // You need an Update method
+
+	// *** BROADCAST ADDED REACTION ***
+	broadcastMessage := map[string]interface{}{
+		"type":       "reaction_added",
+		"message_id": messageID,
+		"user_id":    userID,
+		"emoji":      reaction,
+		// NO group_id here initially
+	}
+
+	// Add group_id ONLY if it's a group message
+	if message.GroupID != nil {
+		broadcastMessage["group_id"] = message.GroupID.String()
+	}
+
+	broadcastBytes, _ := json.Marshal(broadcastMessage)
+
+	// Determine who to broadcast to (group or specific user)
+	if message.GroupID != nil {
+		// Iterate through the group members in the hub.
+		for memberUserID := range s.hub.Groups[message.GroupID.String()] {
+			if client, ok := s.hub.Clients[memberUserID]; ok {
+				select {
+				case client.Send <- broadcastBytes: // Send to each member
+				default:
+					close(client.Send)
+					delete(s.hub.Clients, memberUserID) // Clean up
+				}
+			}
+		}
+	} else if message.ReceiverID != nil {
+		// It's a direct message, broadcast to the sender and receiver
+		if client, ok := s.hub.Clients[message.ReceiverID.String()]; ok {
+			client.Send <- broadcastBytes
+		}
+		// Also send back to sender
+		if client, ok := s.hub.Clients[message.SenderID.String()]; ok {
+			client.Send <- broadcastBytes
+		}
+	}
+	err = s.messageRepo.Update(message)
+	if err != nil {
+		return err
+	}
+	return nil // Return the result of the database update
 }
 
 // RemoveReaction removes a reaction from a message.
@@ -259,5 +303,49 @@ func (s *chatService) RemoveReaction(messageID, userID, reaction string) error {
 		return fmt.Errorf("error when marshal reactions")
 	}
 	message.Reactions = datatypes.JSON(updatedReactions)
-	return s.messageRepo.Update(message) // Update the message in the repo
+
+	// *** BROADCAST REMOVED REACTION ***
+	broadcastMessage := map[string]interface{}{
+		"type":       "reaction_removed",
+		"message_id": messageID,
+		"user_id":    userID,
+		"emoji":      reaction,
+		// NO group_id here initially
+	}
+
+	// Add group_id ONLY if it's a group message
+	if message.GroupID != nil {
+		broadcastMessage["group_id"] = message.GroupID.String()
+	}
+
+	broadcastBytes, _ := json.Marshal(broadcastMessage)
+
+	// Determine who to broadcast to (group or specific user)
+	if message.GroupID != nil {
+		// Iterate through the group members in the hub.
+		for memberUserID := range s.hub.Groups[message.GroupID.String()] {
+			if client, ok := s.hub.Clients[memberUserID]; ok {
+				select {
+				case client.Send <- broadcastBytes:
+				default:
+					close(client.Send)
+					delete(s.hub.Clients, memberUserID)
+				}
+			}
+		}
+	} else if message.ReceiverID != nil {
+		// It's a direct message, broadcast to the sender and receiver
+		if client, ok := s.hub.Clients[message.ReceiverID.String()]; ok {
+			client.Send <- broadcastBytes
+		}
+		//Also send back to sender
+		if client, ok := s.hub.Clients[message.SenderID.String()]; ok {
+			client.Send <- broadcastBytes
+		}
+	}
+	err = s.messageRepo.Update(message) // Update the message in the repo
+	if err != nil {
+		return err
+	}
+	return nil
 }

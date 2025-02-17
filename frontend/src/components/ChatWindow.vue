@@ -393,6 +393,16 @@ export default {
                   });
                   break;
 
+                case "reaction_added":
+                case "reaction_removed":
+                  store.dispatch('updateReaction', {
+                    messageId: data.message_id,
+                    userId: data.user_id,
+                    emoji: data.emoji,
+                    type: data.type,
+                  });
+                  break;
+
                 default:
                   console.log("Unhandled message type:", data.type);
                   break;

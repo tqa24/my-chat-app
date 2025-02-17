@@ -131,7 +131,7 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 					continue
 				}
 				// Broadcast the reaction update
-				c.Hub.Broadcast <- message
+				//c.Hub.Broadcast <- message
 			}
 
 		case "remove_reaction":
@@ -145,7 +145,7 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 					continue
 				}
 				// Broadcast the reaction removal
-				c.Hub.Broadcast <- message
+				//c.Hub.Broadcast <- message
 			}
 		case "message_status":
 			if messageSaver, ok := messageSaver.(interface {

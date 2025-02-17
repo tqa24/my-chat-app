@@ -97,6 +97,58 @@ func (h *Hub) Run() {
 					continue
 				}
 
+				// Handle reaction messages
+				if msgType == "reaction_added" || msgType == "reaction_removed" {
+					// Check group_id
+					if groupID, ok := msg["group_id"].(string); ok && groupID != "" {
+						// Group message: send only to members of the group
+						if members, ok := h.Groups[groupID]; ok {
+							for userID := range members {
+								if client, ok := h.Clients[userID]; ok {
+									select {
+									case client.Send <- message: // Send to the client
+									default:
+										// If the client's send channel is full, assume they're disconnected.
+										close(client.Send)
+										delete(h.Clients, client.UserID)
+										// Remove from group as well
+										delete(members, userID)
+									}
+								}
+							}
+							// If the group is now empty, delete it
+							if len(members) == 0 {
+								delete(h.Groups, groupID)
+							}
+						}
+						continue // Important: Skip the default broadcast
+						// If not group message, it mean that this message is direct message
+					} else {
+						// Get receiverID from message
+						if receiverID, ok := msg["receiver_id"].(string); ok && receiverID != "" {
+							if client, ok := h.Clients[receiverID]; ok { // Check client exist
+								select {
+								case client.Send <- message:
+								default:
+									close(client.Send)
+									delete(h.Clients, receiverID)
+								}
+							}
+						}
+						// Also send back to sender
+						if senderID, ok := msg["sender_id"].(string); ok && senderID != "" {
+							if client, ok := h.Clients[senderID]; ok {
+								select {
+								case client.Send <- message:
+								default:
+									close(client.Send)
+									delete(h.Clients, senderID)
+								}
+							}
+						}
+					}
+					continue // Skip further process
+				}
 				//Check group_id
 				if groupID, ok := msg["group_id"].(string); ok && groupID != "" {
 					// Group message: send only to members of the group
