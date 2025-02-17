@@ -40,16 +40,30 @@ type Client struct {
 	UserID string
 }
 type WebSocketMessage struct {
-	Type       string `json:"type"`
-	SenderID   string `json:"sender_id"`
-	ReceiverID string `json:"receiver_id"`
-	Content    string `json:"content"`
-	MessageID  string `json:"message_id"`
+	Type             string `json:"type"`
+	SenderID         string `json:"sender_id"`
+	ReceiverID       string `json:"receiver_id"`
+	GroupID          string `json:"group_id"`
+	Content          string `json:"content"`
+	MessageID        string `json:"message_id"`
+	ReplyToMessageID string `json:"reply_to_message_id"`
+	Emoji            string `json:"emoji"`
+	Status           string `json:"status"` // Add this for message status
+	// *** NEW: File fields ***
+	FileName     string `json:"file_name"`
+	FilePath     string `json:"file_path"`
+	FileType     string `json:"file_type"`
+	FileSize     int64  `json:"file_size"`
+	FileChecksum string `json:"checksum"` // Add this for file checksum
 }
 
 // ReadPump pumps messages from the websocket connection to the hub.
-func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
+func (c *Client) ReadPump(messageSaver MessageSaver) {
 	defer func() {
+		// When client disconnects, send offline status before unregistering
+		offlineMsg := []byte(`{"type": "offline_status", "user_id": "` + c.UserID + `"}`)
+		c.Hub.Broadcast <- offlineMsg
+
 		c.Hub.Unregister <- c
 		c.Conn.Close()
 	}()
@@ -72,26 +86,107 @@ func (c *Client) ReadPump(messageSaver MessageSaver) { // Changed parameter
 
 		switch wsMessage.Type {
 		case "new_message":
-			// Use the MessageSaver interface to save the message
-			err := messageSaver.SendMessage(wsMessage.SenderID, wsMessage.ReceiverID, wsMessage.Content)
-			if err != nil {
-				log.Printf("Error saving message: %v", err)
-				continue
+			if chatService, ok := messageSaver.(interface {
+				SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
+			}); ok {
+				// Call SendMessage with all parameters including file information and checksum
+				if wsMessage.ReceiverID != "" {
+					err := chatService.SendMessage(
+						wsMessage.SenderID,
+						wsMessage.ReceiverID,
+						"",
+						wsMessage.Content,
+						wsMessage.ReplyToMessageID,
+						wsMessage.FileName,
+						wsMessage.FilePath,
+						wsMessage.FileType,
+						wsMessage.FileSize,
+						wsMessage.FileChecksum, // Pass the checksum
+					)
+					if err != nil {
+						log.Printf("Error saving message: %v", err)
+					}
+				} else if wsMessage.GroupID != "" {
+					err := chatService.SendMessage(
+						wsMessage.SenderID,
+						"",
+						wsMessage.GroupID,
+						wsMessage.Content,
+						wsMessage.ReplyToMessageID,
+						wsMessage.FileName,
+						wsMessage.FilePath,
+						wsMessage.FileType,
+						wsMessage.FileSize,
+						wsMessage.FileChecksum, //Pass the checksum
+					)
+					if err != nil {
+						log.Printf("Error saving message: %v", err)
+					}
+				}
+			} else {
+				log.Printf("Error: messageSaver does not implement SendMessage")
 			}
+
 		case "typing": // Handle typing indicator
 			wsMessage.SenderID = c.UserID
 			// Broadcast typing indicator to the recipient
 			c.Hub.Broadcast <- message // Just forward the original message
 		case "online_status":
 			// Handle user coming online
-			c.Hub.Broadcast <- []byte(`{"type": "online_status", "user_id": "` + c.UserID + `", "status": "online"}`)
+			statusMsg := []byte(`{"type": "online_status", "user_id": "` + c.UserID + `"}`)
+			c.Hub.Broadcast <- statusMsg
 
 		case "offline_status": // Handle user going offline
 			// You might want to store last seen time here
-			c.Hub.Broadcast <- []byte(`{"type": "offline_status", "user_id": "` + c.UserID + `"}`)
+			statusMsg := []byte(`{"type": "offline_status", "user_id": "` + c.UserID + `"}`)
+			c.Hub.Broadcast <- statusMsg
 
 		case "read_message": // Handle message read status
 			c.Hub.Broadcast <- []byte(`{"type": "read_message", "message_id": "` + wsMessage.MessageID + `", "read_by": "` + c.UserID + `"}`)
+
+		case "join_group":
+			// Add the client to the group
+			c.Hub.AddClientToGroup(c.UserID, wsMessage.GroupID)
+			log.Printf("Client %s joined group %s", c.UserID, wsMessage.GroupID)
+		case "reaction":
+			// Handle adding reaction
+			if messageSaver, ok := messageSaver.(interface {
+				AddReaction(messageID, userID, emoji string) error
+			}); ok {
+				err := messageSaver.AddReaction(wsMessage.MessageID, c.UserID, wsMessage.Emoji)
+				if err != nil {
+					log.Printf("Error adding reaction: %v", err)
+					continue
+				}
+				// Broadcast the reaction update
+				//c.Hub.Broadcast <- message // Remove this.  Backend handles it.
+			}
+
+		case "remove_reaction":
+			// Handle removing reaction
+			if messageSaver, ok := messageSaver.(interface {
+				RemoveReaction(messageID, userID, emoji string) error
+			}); ok {
+				err := messageSaver.RemoveReaction(wsMessage.MessageID, c.UserID, wsMessage.Emoji)
+				if err != nil {
+					log.Printf("Error removing reaction: %v", err)
+					continue
+				}
+				// Broadcast the reaction removal
+				//c.Hub.Broadcast <- message // Remove this.  Backend handles it.
+			}
+		case "message_status":
+			if messageSaver, ok := messageSaver.(interface {
+				UpdateMessageStatus(messageID string, status string) error
+			}); ok {
+				err := messageSaver.UpdateMessageStatus(wsMessage.MessageID, wsMessage.Status)
+				if err != nil {
+					log.Printf("Error updating message status: %v", err)
+					continue
+				}
+				// Broadcast the status update
+				c.Hub.Broadcast <- message
+			}
 		}
 	}
 }

@@ -14,8 +14,10 @@ import (
 
 type AuthService interface {
 	RegisterUser(user *models.User) error
+	//Change below
 	LoginUser(username, password string) (*models.User, error)
 	LoginUserWithEmail(email, password string) (*models.User, error)
+	GetUserProfile(userID string) (*models.User, error)
 }
 
 type authService struct {
@@ -31,10 +33,7 @@ func (s *authService) RegisterUser(user *models.User) error {
 	user.Username = strings.TrimSpace(user.Username)
 	user.Email = strings.TrimSpace(user.Email)
 	user.Password = strings.TrimSpace(user.Password)
-
-	// IMPORTANT: Log the *plain text* password *before* hashing, for debugging.
-	log.Printf("Register: Plain text password BEFORE hashing: %s", user.Password)
-
+	log.Printf("Register info before hash, %+v", user)
 	// Check if username already exists
 	existingUser, err := s.userRepo.GetByUsername(user.Username)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -59,29 +58,25 @@ func (s *authService) RegisterUser(user *models.User) error {
 		return err
 	}
 	user.Password = string(hashedPassword)
-
-	// IMPORTANT: Log the *hashed* password, for debugging.
-	log.Printf("Register: Hashed password: %s", user.Password)
+	log.Printf("Register info after hash, %+v", user) //Moved
 
 	// Create the user
 	return s.userRepo.Create(user)
 }
 
 func (s *authService) LoginUser(username, password string) (*models.User, error) {
-	log.Printf("Login with username %v", username) // Log just the username
+	log.Printf("Login with username %v %v", username, password)
 	user, err := s.userRepo.GetByUsername(username)
 	if err != nil {
 		log.Printf("LoginUser: User not found by username: %s, error: %v", username, err) // Log user not found
 		return nil, errors.New("invalid credentials")
 	}
 
-	// Log the *hashed* password from the database.
-	log.Printf("LoginUser: Hashed password from DB: %s", user.Password)
+	log.Printf("LoginUser: User found: %+v", user)                      // Log the user object
+	log.Printf("LoginUser: Hashed password from DB: %s", user.Password) // Log hashed password
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
-
-	// Log the *result* of the bcrypt comparison and the provided password.
-	log.Printf("LoginUser: bcrypt.CompareHashAndPassword result: %v, Provided Password: %s", err, password)
+	log.Printf("LoginUser: bcrypt.CompareHashAndPassword result: %v", err) // Log bcrypt result
 
 	if err != nil {
 		return nil, errors.New("invalid credentials")
@@ -91,23 +86,26 @@ func (s *authService) LoginUser(username, password string) (*models.User, error)
 }
 
 func (s *authService) LoginUserWithEmail(email, password string) (*models.User, error) {
-	log.Printf("Login with email %v", email) // Log just the email
+	log.Printf("Login with email %v %v", email, password)
 	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
 		log.Printf("LoginUserWithEmail: User not found by email: %s, error: %v", email, err) // Log user not found
 		return nil, errors.New("invalid credentials")
 	}
 
-	// Log the *hashed* password from the database.
-	log.Printf("LoginUserWithEmail: Hashed password from DB: %s", user.Password)
+	log.Printf("LoginUserWithEmail: User found: %+v", user)                      // Log the user object
+	log.Printf("LoginUserWithEmail: Hashed password from DB: %s", user.Password) // Log hashed password
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
-	// Log the *result* of the bcrypt comparison and the provided password.
-	log.Printf("LoginUserWithEmail: bcrypt.CompareHashAndPassword result: %v, Provided Password: %s", err, password)
+	log.Printf("LoginUserWithEmail: bcrypt.CompareHashAndPassword result: %v", err) // Log bcrypt result
 
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
 
 	return user, nil
+}
+
+func (s *authService) GetUserProfile(userID string) (*models.User, error) {
+	return s.userRepo.GetByID(userID)
 }

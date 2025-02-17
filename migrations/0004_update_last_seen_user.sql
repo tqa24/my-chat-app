@@ -1,0 +1,2 @@
+ALTER TABLE users
+ALTER COLUMN last_seen DROP DEFAULT;

@@ -29,6 +29,7 @@ func main() {
 	// Initialize repositories
 	userRepo := repositories.NewUserRepository(db)
 	messageRepo := repositories.NewMessageRepository(db)
+	groupRepo := repositories.NewGroupRepository(db)
 
 	// Initialize WebSocket hub
 	hub := websockets.NewHub()
@@ -36,12 +37,13 @@ func main() {
 
 	// Initialize services
 	authService := services.NewAuthService(userRepo)
-	chatService := services.NewChatService(messageRepo, hub)
+	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub)
+	groupService := services.NewGroupService(groupRepo, userRepo, hub)
 
 	// Initialize handlers
-	authHandler := api.NewAuthHandler(authService, userRepo) // Pass userRepo
-	chatHandler := api.NewChatHandler(chatService, hub)
-
+	authHandler := api.NewAuthHandler(authService, userRepo)
+	chatHandler := api.NewChatHandler(chatService, hub, db)
+	groupHandler := api.NewGroupHandler(groupService)
 	// Initialize Gin router
 	r := gin.Default()
 	//CORS
@@ -54,7 +56,22 @@ func main() {
 	r.GET("/ws", chatHandler.WebSocketHandler)
 	r.GET("/messages", chatHandler.GetConversation) // For get conversation
 	r.POST("/messages", chatHandler.SendMessage)    // For send message
-	r.GET("/users", authHandler.GetAllUsers)        // Add the new route
+	r.GET("/users", authHandler.GetAllUsers)
+	// Group routes
+	r.POST("/groups", groupHandler.CreateGroup)                     // Create a new group
+	r.GET("/groups/:id", groupHandler.GetGroup)                     // Get group details
+	r.POST("/groups/:id/join", groupHandler.JoinGroup)              // Join a group
+	r.POST("/groups/join-by-code", groupHandler.JoinGroupByCode)    // Join group by code
+	r.POST("/groups/:id/leave", groupHandler.LeaveGroup)            // Leave a group
+	r.GET("/users/:id/groups", groupHandler.ListGroupsForUser)      // List groups for a user
+	r.GET("/groups", groupHandler.GetAllGroups)                     // Get all groups
+	r.GET("/groups/:id/messages", chatHandler.GetGroupConversation) // For get group conversation
+	r.POST("/messages/:id/react", chatHandler.AddReaction)          // NEW: Add reaction
+	r.DELETE("/messages/:id/react", chatHandler.RemoveReaction)     // NEW: Remove reaction
+	// *** NEW: File Upload Route ***
+	r.POST("/upload", chatHandler.UploadFile)
+	// *** NEW: Serve uploaded files statically ***
+	r.Static("/uploads", "./uploads")
 
 	// Start the server
 	log.Printf("Server listening on port %s", config.AppConfig.AppPort)

@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import LoginView from '../views/LoginView.vue';
 import RegisterView from '../views/RegisterView.vue';
+import CreateGroup from '../components/CreateGroup.vue';
+import JoinGroupByCode from '../components/JoinGroupByCode.vue';
 
 const routes = [
     {
@@ -20,6 +22,18 @@ const routes = [
         name: 'register',
         component: RegisterView,
     },
+    {
+        path: '/create-group', // Add this route
+        name: 'create-group',
+        component: CreateGroup, // Use the component
+        meta: { requiresAuth: true }, // Protect this route
+    },
+    {
+        path: '/join-group', // Add this route for joining by code
+        name: 'join-group',
+        component: JoinGroupByCode,
+        meta: { requiresAuth: true },
+    }
 ];
 
 const router = createRouter({
@@ -28,11 +42,12 @@ const router = createRouter({
 });
 
 router.beforeEach((to, from, next) => {
-    const isLoggedIn = localStorage.getItem('user'); // Simple check (replace with Vuex)
+    const isLoggedIn = localStorage.getItem('user');
     if (to.matched.some(record => record.meta.requiresAuth) && !isLoggedIn) {
-        next('/login'); // Redirect to login if not authenticated
+        next('/login');
     } else {
         next();
     }
 });
+
 export default router;

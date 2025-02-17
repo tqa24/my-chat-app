@@ -1,22 +1,23 @@
+// api/auth.go
 package api
 
 import (
-	"github.com/google/uuid"
-	"log" // Import log
+	"log"
+	"my-chat-app/models"
 	"my-chat-app/repositories"
+	"my-chat-app/services"
+	"my-chat-app/utils"
 	"net/http"
 	"strings"
 
-	"my-chat-app/models"
-	"my-chat-app/services"
-	"my-chat-app/utils"
-
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
 	authService services.AuthService
 	userRepo    repositories.UserRepository // Inject UserRepository
+
 }
 
 func NewAuthHandler(authService services.AuthService, userRepo repositories.UserRepository) *AuthHandler {
@@ -25,7 +26,7 @@ func NewAuthHandler(authService services.AuthService, userRepo repositories.User
 
 func (h *AuthHandler) Register(c *gin.Context) {
 	log.Println("Register handler called") // Log entry point
-	var user models.User                   //This line
+	var user models.User
 	if err := c.ShouldBindJSON(&user); err != nil {
 		log.Printf("Register: Error binding JSON: %v", err) // Log binding errors
 		utils.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
@@ -43,7 +44,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	log.Println("Register: User registered successfully") // Log success
 	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully"})
 }
-
 func (h *AuthHandler) Login(c *gin.Context) {
 	log.Println("Login handler called") // Log entry point
 	var credentials struct {
@@ -82,8 +82,19 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	type UserResponse struct {
+		ID       uuid.UUID `json:"id"`
+		Username string    `json:"username"`
+		Email    string    `json:"email"`
+	}
+	userResponse := UserResponse{
+		ID:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+	}
+
 	log.Println("Login: Login successful") // Log success
-	c.JSON(http.StatusOK, gin.H{"message": "Login successful", "user": user})
+	c.JSON(http.StatusOK, gin.H{"message": "Login successful", "user": userResponse})
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
@@ -91,7 +102,27 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 func (h *AuthHandler) Profile(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "get Profile"})
+	userID := c.Query("userID") // Retrieve user ID from Query
+	if userID == "" {
+		utils.RespondWithError(c, http.StatusBadRequest, "User ID is required")
+		return
+	}
+	user, err := h.authService.GetUserProfile(userID)
+	if err != nil {
+		utils.RespondWithError(c, http.StatusNotFound, "User not found")
+		return
+	}
+	type UserResponse struct {
+		ID       uuid.UUID `json:"id"`
+		Username string    `json:"username"`
+		Email    string    `json:"email"`
+	}
+	userResponse := UserResponse{
+		ID:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+	}
+	c.JSON(http.StatusOK, userResponse)
 }
 func (h *AuthHandler) GetAllUsers(c *gin.Context) {
 	users, err := h.userRepo.GetAll()

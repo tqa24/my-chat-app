@@ -12,13 +12,16 @@ type User struct {
 	Username  string    `gorm:"unique;not null" json:"username"`
 	Password  string    `gorm:"not null" json:"password"`
 	Email     string    `gorm:"unique;not null" json:"email"`
-	LastSeen  time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"last_seen"`
+	LastSeen  time.Time `gorm:"type:timestamp with time zone" json:"last_seen"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Groups    []*Group  `gorm:"many2many:user_groups;" json:"groups"`
 }
 
 // BeforeCreate hook to generate UUID for ID
 func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
-	u.ID = uuid.New()
+	if u.ID == uuid.Nil {
+		u.ID = uuid.New()
+	}
 	return
 }
