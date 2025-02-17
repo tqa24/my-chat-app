@@ -50,10 +50,11 @@ type WebSocketMessage struct {
 	Emoji            string `json:"emoji"`
 	Status           string `json:"status"` // Add this for message status
 	// *** NEW: File fields ***
-	FileName string `json:"file_name"`
-	FilePath string `json:"file_path"`
-	FileType string `json:"file_type"`
-	FileSize int64  `json:"file_size"`
+	FileName     string `json:"file_name"`
+	FilePath     string `json:"file_path"`
+	FileType     string `json:"file_type"`
+	FileSize     int64  `json:"file_size"`
+	FileChecksum string `json:"checksum"` // Add this for file checksum
 }
 
 // ReadPump pumps messages from the websocket connection to the hub.
@@ -86,9 +87,9 @@ func (c *Client) ReadPump(messageSaver MessageSaver) {
 		switch wsMessage.Type {
 		case "new_message":
 			if chatService, ok := messageSaver.(interface {
-				SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64) error
+				SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
 			}); ok {
-				// Call SendMessage with all parameters including file information
+				// Call SendMessage with all parameters including file information and checksum
 				if wsMessage.ReceiverID != "" {
 					err := chatService.SendMessage(
 						wsMessage.SenderID,
@@ -100,6 +101,7 @@ func (c *Client) ReadPump(messageSaver MessageSaver) {
 						wsMessage.FilePath,
 						wsMessage.FileType,
 						wsMessage.FileSize,
+						wsMessage.FileChecksum, // Pass the checksum
 					)
 					if err != nil {
 						log.Printf("Error saving message: %v", err)
@@ -115,6 +117,7 @@ func (c *Client) ReadPump(messageSaver MessageSaver) {
 						wsMessage.FilePath,
 						wsMessage.FileType,
 						wsMessage.FileSize,
+						wsMessage.FileChecksum, //Pass the checksum
 					)
 					if err != nil {
 						log.Printf("Error saving message: %v", err)

@@ -104,6 +104,7 @@ export default {
             file_path: uploadedFile.value ? uploadedFile.value.path : null,
             file_type: uploadedFile.value ? uploadedFile.value.type : null,
             file_size: uploadedFile.value ? uploadedFile.value.size : null,
+            checksum:  uploadedFile.value ? uploadedFile.value.checksum : null, // Pass checksum
           }
         } else {
           msg = {
@@ -117,6 +118,7 @@ export default {
             file_path: uploadedFile.value ? uploadedFile.value.path : null,
             file_type: uploadedFile.value ? uploadedFile.value.type : null,
             file_size: uploadedFile.value ? uploadedFile.value.size : null,
+            checksum: uploadedFile.value ? uploadedFile.value.checksum : null, // Pass checksum
           }
         }
 

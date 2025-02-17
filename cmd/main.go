@@ -29,7 +29,7 @@ func main() {
 	// Initialize repositories
 	userRepo := repositories.NewUserRepository(db)
 	messageRepo := repositories.NewMessageRepository(db)
-	groupRepo := repositories.NewGroupRepository(db) // Add Group Repository
+	groupRepo := repositories.NewGroupRepository(db)
 
 	// Initialize WebSocket hub
 	hub := websockets.NewHub()
@@ -42,8 +42,8 @@ func main() {
 
 	// Initialize handlers
 	authHandler := api.NewAuthHandler(authService, userRepo)
-	chatHandler := api.NewChatHandler(chatService, hub)
-	groupHandler := api.NewGroupHandler(groupService) // Add Group Handler
+	chatHandler := api.NewChatHandler(chatService, hub, db)
+	groupHandler := api.NewGroupHandler(groupService)
 	// Initialize Gin router
 	r := gin.Default()
 	//CORS
