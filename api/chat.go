@@ -1,15 +1,19 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/google/generative-ai-go/genai"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"google.golang.org/api/option"
 	"gorm.io/gorm"
 	"io"
 	"log"
+	"my-chat-app/config"
 	"my-chat-app/models"
 	"my-chat-app/services"
 	"my-chat-app/websockets"
@@ -28,10 +32,17 @@ type ChatHandler struct {
 	chatService services.ChatService
 	hub         *websockets.Hub // Inject the WebSocket hub
 	db          *gorm.DB
+	aiClient    *genai.Client
 }
 
 func NewChatHandler(chatService services.ChatService, hub *websockets.Hub, db *gorm.DB) *ChatHandler {
-	return &ChatHandler{chatService, hub, db}
+	ctx := context.Background()
+	aiClient, err := genai.NewClient(ctx, option.WithAPIKey(config.AppConfig.GoogleAIKey)) // Use API Key from config
+	if err != nil {
+		log.Fatalf("Failed to create AI client: %v", err) // Fatal error if AI client creation fails
+	}
+
+	return &ChatHandler{chatService, hub, db, aiClient} // Pass AI Client
 }
 
 // GetConversation handles retrieving the conversation history between two users.
@@ -86,8 +97,10 @@ func (h *ChatHandler) WebSocketHandler(c *gin.Context) {
 		UserID: userID,
 	}
 	client.Hub.Register <- client
-	go client.WritePump()                                       // Handle sending messages to the client
-	go client.ReadPump(h.chatService.(websockets.MessageSaver)) // Pass the chatService here and fix.
+
+	// Pass the AI client to ReadPump
+	go client.WritePump()
+	go client.ReadPump(h.chatService.(websockets.MessageSaver), h.aiClient)
 }
 
 // --- File Upload Handler ---
@@ -350,4 +363,35 @@ func (h *ChatHandler) RemoveReaction(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Reaction removed"})
+}
+
+// PrivateAIHandler handles requests to the /ai route.
+func (h *ChatHandler) PrivateAIHandler(c *gin.Context) {
+	var req struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
+		return
+	}
+
+	ctx := context.Background() // Use context for the AI request
+	model := h.aiClient.GenerativeModel("gemini-2.0-pro-exp-02-05")
+	resp, err := model.GenerateContent(ctx, genai.Text(req.Prompt))
+	if err != nil {
+		log.Printf("AI generation error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI generation failed"})
+		return
+	}
+
+	// Extract the text response from the AI.
+	if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
+		if textPart, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
+			c.JSON(http.StatusOK, gin.H{"response": string(textPart)})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Unexpected response format from AI"})
+		}
+	} else {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No response from AI"})
+	}
 }
