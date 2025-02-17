@@ -307,9 +307,11 @@ export default {
 
               switch (data.type) {
                 case "new_message":
+                  // *** Include sender_username in messageObj ***
                   messageObj = {
                     id: data.message_id,
                     sender_id: data.sender_id,
+                    sender_username: data.sender_username, // Add this line
                     receiver_id: data.receiver_id,
                     group_id: data.group_id,
                     content: data.content,

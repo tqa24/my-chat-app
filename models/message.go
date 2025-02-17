@@ -16,9 +16,9 @@ type Message struct {
 	Content          string         `gorm:"not null" json:"content"`
 	Status           string         `gorm:"default:sent" json:"status"` // sent, received, read
 	CreatedAt        time.Time      `json:"created_at"`
-	Sender           User           `gorm:"foreignKey:SenderID;references:ID" json:"sender"`                             // Don't include in JSON
-	Receiver         User           `gorm:"foreignKey:ReceiverID;references:ID" json:"receiver"`                         // Don't include in JSON
-	Group            Group          `gorm:"foreignKey:GroupID;references:ID" json:"group"`                               // Add Group
+	Sender           *User          `gorm:"foreignKey:SenderID;references:ID" json:"sender"`                             // Don't include in JSON
+	Receiver         *User          `gorm:"foreignKey:ReceiverID;references:ID" json:"receiver"`                         // Don't include in JSON
+	Group            *Group         `gorm:"foreignKey:GroupID;references:ID" json:"group"`                               // Add Group
 	Reactions        datatypes.JSON `gorm:"type:jsonb" json:"reactions"`                                                 // NEW: Reactions as JSONB
 	ReplyToMessageID *uuid.UUID     `gorm:"type:uuid" json:"reply_to_message_id"`                                        // NEW: Reply-to ID
 	ReplyToMessage   *Message       `gorm:"foreignKey:ReplyToMessageID;references:ID" json:"reply_to_message,omitempty"` // NEW: Include the replied-to message (optional)

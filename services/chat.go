@@ -17,19 +17,20 @@ type ChatService interface {
 	GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	UpdateMessageStatus(messageID string, status string) error
-	AddReaction(messageID, userID, reaction string) error    // NEW
-	RemoveReaction(messageID, userID, reaction string) error // NEW
+	AddReaction(messageID, userID, reaction string) error
+	RemoveReaction(messageID, userID, reaction string) error
 }
 
 type chatService struct {
 	messageRepo repositories.MessageRepository
-	groupRepo   repositories.GroupRepository // Inject GroupRepository
-	hub         *websockets.Hub              // Inject the WebSocket hub
+	groupRepo   repositories.GroupRepository
+	userRepo    repositories.UserRepository // Inject UserRepository
+	hub         *websockets.Hub
 }
 
-// Update NewChatService to accept GroupRepository
-func NewChatService(messageRepo repositories.MessageRepository, groupRepo repositories.GroupRepository, hub *websockets.Hub) ChatService {
-	return &chatService{messageRepo, groupRepo, hub}
+// Update NewChatService to accept GroupRepository and UserRepository
+func NewChatService(messageRepo repositories.MessageRepository, groupRepo repositories.GroupRepository, userRepo repositories.UserRepository, hub *websockets.Hub) ChatService {
+	return &chatService{messageRepo, groupRepo, userRepo, hub}
 }
 
 func (s *chatService) SendMessage(senderID, receiverID, groupID, content string, replyToMessageID string) error {
@@ -79,13 +80,22 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content string,
 		return err
 	}
 
+	// *** Fetch the sender's user information ***
+	senderUser, err := s.userRepo.GetByID(senderID)
+	if err != nil {
+		// Handle error (e.g., log it, but don't necessarily stop the message sending)
+		fmt.Printf("Error fetching sender user: %v\n", err)
+		// You might choose to send a "system" message or a placeholder username here.
+	}
+
 	// Construct a map for the message data
 	msgData := map[string]interface{}{
-		"type":       "new_message",
-		"sender_id":  senderID,
-		"content":    content,
-		"message_id": message.ID.String(),
-		"created_at": message.CreatedAt.Format("2006-01-02 15:04:05"),
+		"type":            "new_message",
+		"sender_id":       senderID,
+		"sender_username": senderUser.Username, // Include sender's username
+		"content":         content,
+		"message_id":      message.ID.String(),
+		"created_at":      message.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 	// Add reply_to_message_id if present
 	if replyToUUID != nil {

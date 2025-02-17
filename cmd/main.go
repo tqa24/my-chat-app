@@ -37,7 +37,7 @@ func main() {
 
 	// Initialize services
 	authService := services.NewAuthService(userRepo)
-	chatService := services.NewChatService(messageRepo, groupRepo, hub) // Add Group Service
+	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub) // Add Group Service
 	groupService := services.NewGroupService(groupRepo, userRepo, hub)
 
 	// Initialize handlers

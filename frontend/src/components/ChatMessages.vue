@@ -4,7 +4,12 @@
          :key="message.id"
          :class="['message', getMessageClass(message)]"
          :data-message-id="message.id">
+      <!-- Add sender's username for group messages -->
+      <div class="message-sender" v-if="message.group_id && message.sender_id !== currentUser?.id">
+        {{ getSenderUsername(message) }}
+      </div>
       <div class="message-content">
+
         <!-- Reply preview section -->
         <div v-if="message.reply_to_message" class="reply-preview" @click="scrollToMessage(message.reply_to_message.id)">
           <span>{{ getReplyPreview(message.reply_to_message) }}</span>
@@ -258,6 +263,16 @@ export default {
       }
     };
 
+    // *** NEW: Method to get the sender's username ***
+    const getSenderUsername = (message) => {
+      if (message.sender_username) { //Prioritize
+        return message.sender_username
+      }
+      // Fallback to using usersOnline (less reliable)
+      const sender = store.getters.getUserById(message.sender_id);
+      return sender ? sender.username : 'Unknown User';
+    };
+
     return {
       currentUser,
       showReactionPicker,
@@ -278,13 +293,22 @@ export default {
       getReactionUsers,
       replyToMessage,
       scrollToMessage,
-      getStatusIcon
+      getStatusIcon,
+      getSenderUsername, // Add to returned object
     };
   }
 };
 </script>
 
 <style scoped>
+/* Add style for sender username */
+.message-sender {
+  font-size: 0.8em;
+  color: #888;
+  margin-bottom: 2px;
+}
+
+/* ... (rest of your existing styles) ... */
 .messages {
   display: flex;
   flex-direction: column;
@@ -445,6 +469,7 @@ export default {
 
 @keyframes highlight {
   0% {
+    background-color: rgba;
     background-color: rgba(255, 255, 0, 0.5);
   }
   100% {
