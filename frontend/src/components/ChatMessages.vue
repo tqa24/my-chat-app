@@ -9,43 +9,40 @@
         {{ getSenderUsername(message) }}
       </div>
       <div class="message-content">
-
         <!-- Reply preview section -->
-        <div v-if="message.reply_to_message" class="reply-preview" @click="scrollToMessage(message.reply_to_message.id)">
+        <div v-if="message.reply_to_message" class="reply-preview"
+             @click="scrollToMessage(message.reply_to_message.id)">
           <span>{{ getReplyPreview(message.reply_to_message) }}</span>
         </div>
-
         <!-- *** Display File/Image *** -->
         <div v-if="message.file_name" class="file-attachment">
           <div v-if="isImage(message.file_type)" class="image-preview">
-            <img :src="message.file_path" :alt="message.file_name" @click="showFullImage(message.file_path)" />
+            <img :src="formatFilePath(message.file_path)" :alt="message.file_name"
+                 @click="showFullImage(formatFilePath(message.file_path))"/>
           </div>
           <div v-else class="file-info">
             <i class="fas fa-file"></i> <!-- Generic file icon -->
             <span>{{ message.file_name }} ({{ formatFileSize(message.file_size) }})</span>
-            <a :href="message.file_path" :download="message.file_name" class="download-link">
+            <a :href="formatFilePath(message.file_path)" :download="message.file_name" class="download-link">
               <i class="fas fa-download"></i> Download
             </a>
           </div>
         </div>
-
         <div class="message-text">{{ message.content }}</div>
-
         <!-- Reactions section -->
         <div class="reactions-container">
           <!-- Display existing reactions -->
           <div v-if="message.reactions && Object.keys(message.reactions).length > 0" class="reactions">
-            <span v-for="(users, emoji) in message.reactions"
-                  :key="emoji"
-                  class="reaction"
-                  :class="{ 'user-reacted': hasUserReactedWithEmoji(message, emoji) }"
-                  :title="getReactionUsers(users)"
-                  @click="handleReactionClick(message, emoji)">
-              {{ emoji }} {{ users.length }}
-            </span>
+<span v-for="(users, emoji) in message.reactions"
+      :key="emoji"
+      class="reaction"
+      :class="{ 'user-reacted': hasUserReactedWithEmoji(message, emoji) }"
+      :title="getReactionUsers(users)"
+      @click="handleReactionClick(message, emoji)">
+{{ emoji }} {{ users.length }}
+</span>
           </div>
         </div>
-
         <!-- Message actions -->
         <div class="message-actions">
           <div class="action-buttons">
@@ -56,41 +53,39 @@
               😀
             </button>
           </div>
-
           <!-- Reaction picker -->
           <div v-if="showReactionPicker && selectedMessageId === message.id"
                class="reaction-picker"
                v-click-outside="closeReactionPicker">
-            <span v-for="emoji in availableReactions"
-                  :key="emoji"
-                  @click="addReaction(message, emoji)"
-                  :class="{ 'selected': hasUserReactedWithEmoji(message, emoji) }"
-                  class="emoji-option">
-                {{ emoji }}
-            </span>
+<span v-for="emoji in availableReactions"
+      :key="emoji"
+      @click="addReaction(message, emoji)"
+      :class="{ 'selected': hasUserReactedWithEmoji(message, emoji) }"
+      class="emoji-option">
+{{ emoji }}
+</span>
           </div>
         </div>
       </div>
       <div class="message-info">
         <small>{{ formatTime(message.created_at) }}</small>
         <span class="message-status" :class="message.status">
-        {{ getStatusIcon(message.status) }}
-      </span>
+{{ getStatusIcon(message.status) }}
+</span>
       </div>
     </div>
     <!-- Full Image Modal (NEW) -->
     <div v-if="showModal" class="modal-overlay" @click="closeModal">
       <div class="modal-content" @click.stop>
-        <img :src="modalImageUrl" alt="Full Image" />
+        <img :src="modalImageUrl" alt="Full Image"/>
         <button @click="closeModal" class="close-button">Close</button>
       </div>
     </div>
   </div>
 </template>
-
 <script>
-import { ref, computed, onMounted, nextTick, watch } from 'vue';
-import { useStore } from 'vuex';
+import {ref, computed, onMounted, nextTick, watch} from 'vue';
+import {useStore} from 'vuex';
 
 export default {
   props: {
@@ -122,48 +117,39 @@ export default {
     const hoveredMessageId = ref(null);
     const messagesContainer = ref(null);
     const currentUser = computed(() => store.state.user);
-
-    const availableReactions = ['👍', '❤️','😂', '😮', '😢', '😠'];
-    // *** NEW: For Full Image Modal ***
+    const availableReactions = ['👍', '❤️', '😂', '😮', '😢', '😠'];
+// *** NEW: For Full Image Modal ***
     const showModal = ref(false);
     const modalImageUrl = ref('');
-
     const showFullImage = (imageUrl) => {
       modalImageUrl.value = imageUrl;
       showModal.value = true;
     };
-
     const closeModal = () => {
       modalImageUrl.value = '';
       showModal.value = false;
     };
-
-    // Scroll to bottom when new messages arrive
+// Scroll to bottom when new messages arrive
     watch(() => props.messages, async () => {
       await nextTick();
       scrollToBottom();
-    }, { deep: true });
-
+    }, {deep: true});
     onMounted(() => {
       scrollToBottom();
     });
-
     const scrollToBottom = () => {
       if (messagesContainer.value) {
         messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
       }
     };
-
     const closeReactionPicker = () => {
       console.log('closeReactionPicker called'); // ADD THIS
       showReactionPicker.value = false;
       selectedMessageId.value = null;
     };
-
     const toggleReactionPicker = (message) => {
       console.log('toggleReactionPicker called with message:', message); // ADD THIS
       console.log('Current selectedMessageId:', selectedMessageId.value); // ADD THIS
-
       if (selectedMessageId.value === message.id) {
         console.log('Closing picker (selectedMessageId matches)'); // ADD THIS
         closeReactionPicker();
@@ -174,7 +160,6 @@ export default {
         console.log('New selectedMessageId:', selectedMessageId.value); // ADD THIS
       }
     };
-
     const handleReactionClick = (message, emoji) => {
       if (hasUserReactedWithEmoji(message, emoji)) {
         removeReaction(message, emoji);
@@ -182,24 +167,21 @@ export default {
         addReaction(message, emoji);
       }
     };
-
     const addReaction = async (message, emoji) => {
       try {
-        // Remove existing reaction if any
+// Remove existing reaction if any
         Object.keys(message.reactions || {}).forEach(existingEmoji => {
           if (message.reactions[existingEmoji].includes(currentUser.value.id)) {
             removeReaction(message, existingEmoji);
           }
         });
-
-        // Send reaction to backend via WebSocket
+// Send reaction to backend via WebSocket
         store.state.ws.send(JSON.stringify({
           type: "reaction",
           message_id: message.id,
           emoji: emoji
         }));
-
-        // Optimistically update UI
+// Optimistically update UI
         if (!message.reactions) {
           message.reactions = {};
         }
@@ -214,17 +196,15 @@ export default {
       }
       closeReactionPicker();
     };
-
     const removeReaction = (message, emoji) => {
       try {
-        // Send remove reaction to backend via WebSocket
+// Send remove reaction to backend via WebSocket
         store.state.ws.send(JSON.stringify({
           type: "remove_reaction",
           message_id: message.id,
           emoji: emoji
         }));
-
-        // Optimistically update UI
+// Optimistically update UI
         if (message.reactions?.[emoji]) {
           const index = message.reactions[emoji].indexOf(currentUser.value.id);
           if (index > -1) {
@@ -238,17 +218,14 @@ export default {
         console.error('Failed to remove reaction:', error);
       }
     };
-
     const hasUserReactedWithEmoji = (message, emoji) => {
       return message.reactions?.[emoji]?.includes(currentUser.value.id) || false;
     };
-
     const hasUserReacted = (message) => {
       return Object.values(message.reactions || {}).some(users =>
           users.includes(currentUser.value.id)
       );
     };
-
     const getReactionUsers = (users) => {
       return users.map(userId => {
         if (userId === currentUser.value.id) return 'You';
@@ -256,7 +233,6 @@ export default {
         return user ? user.username : 'Unknown User';
       }).join(', ');
     };
-
     const getReplyPreview = (replyMessage) => {
       if (replyMessage.sender_id === currentUser.value.id) {
         return `You: ${replyMessage.content}`;
@@ -264,55 +240,51 @@ export default {
       const sender = store.getters.getUserById(replyMessage.sender_id);
       return `${sender ? sender.username : 'Unknown User'}: ${replyMessage.content}`;
     };
-
     const replyToMessage = (message) => {
       store.commit('setReplyingTo', message);
     };
-
     const scrollToMessage = (messageId) => {
       const element = document.querySelector(`[data-message-id="${messageId}"]`);
       if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.scrollIntoView({behavior: 'smooth', block: 'center'});
         element.classList.add('highlight');
         setTimeout(() => element.classList.remove('highlight'), 2000);
       }
     };
-
     const getMessageClass = (message) => {
       return message.sender_id === currentUser.value.id ? 'sent' : 'received';
     };
-
     const formatTime = (timestamp) => {
       if (!timestamp) return '';
       const date = new Date(timestamp);
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
     };
-
     const getStatusIcon = (status) => {
       switch (status) {
-        case 'sent': return '✓';
-        case 'delivered': return '✓✓';
-        case 'read': return '✓✓';
-        default: return '';
+        case 'sent':
+          return '✓';
+        case 'delivered':
+          return '✓✓';
+        case 'read':
+          return '✓✓';
+        default:
+          return '';
       }
     };
-
-    // *** NEW: Method to get the sender's username ***
+// *** NEW: Method to get the sender's username ***
     const getSenderUsername = (message) => {
       if (message.sender_username) { //Prioritize
         return message.sender_username
       }
-      // Fallback to using usersOnline (less reliable)
+// Fallback to using usersOnline (less reliable)
       const sender = store.getters.getUserById(message.sender_id);
       return sender ? sender.username : 'Unknown User';
     };
-
-    // *** NEW: Check if a file is an image ***
+// *** NEW: Check if a file is an image ***
     const isImage = (fileType) => {
       return fileType.startsWith('image/');
     };
-
-    // Helper function to format file sizes (same as in FileUpload.vue)
+// Helper function to format file sizes (same as in FileUpload.vue)
     const formatFileSize = (bytes) => {
       if (bytes === 0) return '0 Bytes';
       const k = 1024;
@@ -320,7 +292,11 @@ export default {
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
-
+// Add this method to format the file path for the <img> tag
+    const formatFilePath = (filePath) => {
+      if (!filePath) return '';
+      return `http://localhost:8080/${filePath}`; // Prepend base URL
+    }
     return {
       currentUser,
       showReactionPicker,
@@ -349,11 +325,11 @@ export default {
       modalImageUrl,  // For full image modal
       showFullImage,  // For full image modal
       closeModal,      // For full image modal
+      formatFilePath,
     };
   }
 };
 </script>
-
 <style scoped>
 /* Add style for sender username */
 .message-sender {
@@ -372,25 +348,30 @@ export default {
   display: flex; /* Use flexbox for layout */
   align-items: center; /* Vertically center items */
 }
-.file-info{
+
+.file-info {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+
 .image-preview img {
   max-width: 100%; /* Make sure images don't overflow */
   max-height: 200px; /* Limit image height */
   border-radius: 4px;
   cursor: pointer; /* Indicate it's clickable */
 }
+
 .download-link {
   color: #007bff;
   text-decoration: none;
   margin-left: 8px;
 }
-.download-link i{
+
+.download-link i {
   margin-right: 4px;
 }
+
 /* Modal Styles (NEW) */
 .modal-overlay {
   position: fixed;
@@ -411,11 +392,12 @@ export default {
   border-radius: 8px;
   max-width: 90%; /* Limit width */
   max-height: 90%; /* Limit height */
-  overflow: auto;   /* Add scroll if content overflows */
+  overflow: auto; /* Add scroll if content overflows */
   position: relative; /* For positioning the close button */
 }
+
 .modal-content img {
-  max-width: 100%;  /* For responsive images within modal */
+  max-width: 100%; /* For responsive images within modal */
   max-height: 70vh; /* Limit image height within modal */
 }
 
@@ -481,9 +463,11 @@ export default {
   transition: opacity 0.2s;
   position: relative;
 }
+
 .message:hover .message-actions {
   opacity: 1;
 }
+
 .action-button {
   background: none;
   border: none;
@@ -496,10 +480,12 @@ export default {
 .action-button:hover {
   background-color: rgba(0, 0, 0, 0.1);
 }
+
 .action-buttons {
   display: flex;
   gap: 4px;
 }
+
 .reactions-container {
   display: flex;
   flex-wrap: wrap;
@@ -576,7 +562,6 @@ export default {
   background-color: #e0e0e0;
 }
 
-
 .message-info {
   font-size: 0.7em;
   margin-top: 2px;
@@ -595,6 +580,7 @@ export default {
     background-color: transparent;
   }
 }
+
 .message-status {
   font-size: 0.8em;
   margin-left: 4px;
@@ -611,6 +597,7 @@ export default {
 .message-status.read {
   color: #0084ff;
 }
+
 .sent .action-button:hover {
   background-color: rgba(255, 255, 255, 0.2);
 }

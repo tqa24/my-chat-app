@@ -317,7 +317,12 @@ export default {
                     content: data.content,
                     created_at: data.created_at,
                     reply_to_message_id: data.reply_to_message_id,
-                    status: 'sent'
+                    status: 'sent',
+                    // Include file info
+                    file_name: data.file_name,
+                    file_path: data.file_path,
+                    file_type: data.file_type,
+                    file_size: data.file_size
                   };
 
                   if (data.reply_to_message) {

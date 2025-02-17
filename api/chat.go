@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -32,15 +33,12 @@ func NewChatHandler(chatService services.ChatService, hub *websockets.Hub) *Chat
 func (h *ChatHandler) GetConversation(c *gin.Context) {
 	user1ID := c.Query("user1")
 	user2ID := c.Query("user2")
-
 	page := c.DefaultQuery("page", "1")          // Default to page 1
 	pageSize := c.DefaultQuery("pageSize", "10") // Default page size of 10
-
 	if user1ID == "" || user2ID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Both user1 and user2 parameters are required"})
 		return
 	}
-
 	//Change here
 	messages, total, err := h.chatService.GetConversation(user1ID, user2ID, page, pageSize)
 	if err != nil {
@@ -76,16 +74,13 @@ func (h *ChatHandler) WebSocketHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "UserID is required"})
 		return
 	}
-
 	client := &websockets.Client{
 		Hub:    h.hub,
 		Conn:   conn,
 		Send:   make(chan []byte, 256),
 		UserID: userID,
 	}
-
 	client.Hub.Register <- client
-
 	go client.WritePump()                                       // Handle sending messages to the client
 	go client.ReadPump(h.chatService.(websockets.MessageSaver)) // Pass the chatService here and fix.
 }
@@ -102,6 +97,9 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "File size exceeds the limit (25MB)"})
 			return
 		}
+		log.Printf("UploadFile: Error parsing multipart form: %v", err)  // Log other errors
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"}) // Generic error for other parsing issues
+		return
 	}
 	// 2. Get the file from the request
 	file, header, err := c.Request.FormFile("file") // "file" is the name of the form field
@@ -112,7 +110,6 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 		return
 	}
 	defer file.Close()
-
 	// 3. Validate file type (optional, but recommended) - Example: Allow only images
 	// Check file extension
 	ext := filepath.Ext(header.Filename)
@@ -123,18 +120,43 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 		".gif":  true,
 		".pdf":  true, // Add PDF for document support
 		".txt":  true,
+		".zip":  true,
+		".doc":  true,
+		".docx": true,
+		".ppt":  true,
+		".pptx": true,
+		".xls":  true,
+		".xlsx": true,
+		".csv":  true,
+		".mp4":  true,
+		".mp3":  true,
+		".wav":  true,
+		".flac": true,
+		".ogg":  true,
+		".avi":  true,
+		".mov":  true,
+		".wmv":  true,
+		".webm": true,
+		".mkv":  true,
+		".svg":  true,
+		".json": true,
+		".xml":  true,
+		".html": true,
+		".css":  true,
+		".js":   true,
+		".go":   true,
+		".java": true,
+		".py":   true,
 		// Add more as needed...
 	}
 	if _, ok := allowedExts[ext]; !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file type"})
 		return
 	}
-
 	// 4. Generate a unique filename.  Prevent overwrites, avoid spaces/special chars.
 	uniqueID := uuid.New()
 	filename := fmt.Sprintf("%s%s", uniqueID.String(), filepath.Ext(header.Filename))
 	filePath := filepath.Join(UploadDir, filename)
-
 	// 5. Create the uploads directory if it doesn't exist
 	if _, err := os.Stat(UploadDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(UploadDir, 0755); err != nil { // 0755 is a common permission
@@ -151,13 +173,11 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 		return
 	}
 	defer outFile.Close()
-
 	if _, err := io.Copy(outFile, file); err != nil {
 		log.Printf("UploadFile: Error writing file to disk: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not save file"})
 		return
 	}
-
 	// 7. Get file information
 	fileInfo, err := outFile.Stat()
 	if err != nil {
@@ -166,15 +186,16 @@ func (h *ChatHandler) UploadFile(c *gin.Context) {
 		return
 	}
 	fileSize := fileInfo.Size()
+	// Make the filepath URL-friendly and relative to the /uploads route
+	urlFilePath := strings.ReplaceAll(filepath.Join("uploads", filename), "\\", "/")
 	// 8. Return the filename and path to the client
 	c.JSON(http.StatusOK, gin.H{
-		"filename": filename,                           // The unique filename we saved as
-		"filepath": filepath.Join("uploads", filename), // Relative path for access
-		"filetype": header.Header.Get("Content-Type"),  // Get the content type
-		"filesize": fileSize,                           // Return file size
+		"filename": filename,                          // The unique filename we saved as
+		"filepath": urlFilePath,                       // Relative path for access.  VERY IMPORTANT!
+		"filetype": header.Header.Get("Content-Type"), // Get the content type
+		"filesize": fileSize,                          // Return file size
 	})
 }
-
 func (h *ChatHandler) SendMessage(c *gin.Context) {
 	var wsMessage websockets.WebSocketMessage
 	if err := c.ShouldBindJSON(&wsMessage); err != nil {
@@ -182,9 +203,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
 		return
 	}
-
 	log.Printf("Received via WebSocket: %+v", wsMessage) // Log the entire struct
-
 	// --- Basic validation ---
 	if wsMessage.SenderID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing sender_id"})
@@ -198,7 +217,6 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Content is required"})
 		return
 	}
-
 	// --- Call the ChatService ---
 	// Correctly use the fields from wsMessage
 	err := h.chatService.SendMessage(
@@ -212,33 +230,27 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		wsMessage.FileType,
 		wsMessage.FileSize,
 	)
-
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message"})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Message sent successfully"})
 }
 
 // GetGroupConversation handles retrieving the conversation history for a group.
 func (h *ChatHandler) GetGroupConversation(c *gin.Context) {
 	groupID := c.Param("id")
-
 	page := c.DefaultQuery("page", "1")          // Default to page 1
 	pageSize := c.DefaultQuery("pageSize", "10") // Default page size
-
 	if groupID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "groupID parameters are required"})
 		return
 	}
-
 	messages, total, err := h.chatService.GetGroupConversation(groupID, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve conversation"})
 		return
 	}
-
 	// Return messages and total count
 	c.JSON(http.StatusOK, gin.H{
 		"messages": messages,
@@ -265,13 +277,11 @@ func (h *ChatHandler) AddReaction(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing parameters"})
 		return
 	}
-
 	err := h.chatService.AddReaction(messageID, userID, reaction)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Reaction added"})
 }
 
@@ -288,17 +298,14 @@ func (h *ChatHandler) RemoveReaction(c *gin.Context) {
 	}
 	userID := req.UserID     // User ID
 	reaction := req.Reaction // Reaction string
-
 	if messageID == "" || userID == "" || reaction == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing parameters"})
 		return
 	}
-
 	err := h.chatService.RemoveReaction(messageID, userID, reaction)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"message": "Reaction removed"})
 }
