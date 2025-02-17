@@ -6,24 +6,37 @@
       <button @click="cancelReply">Cancel</button>
     </div>
     <FileUpload @file-uploaded="handleFileUploaded" @file-removed="removeFile" />
-    <textarea
-        v-model="message"
-        @keydown.enter.prevent="sendMessage"
-        @input="handleTyping"
-        placeholder="Type your message..."
-    ></textarea>
+    <div class="input-container">
+      <textarea
+          v-model="message"
+          @keydown="handleKeydown"
+          @input="handleTyping"
+          placeholder="Type your message..."
+          ref="messageInput"
+      ></textarea>
+      <!-- Suggestion popup -->
+      <div v-if="showSuggestions" class="suggestions-popup">
+        <div
+            class="suggestion-item"
+            :class="{ active: true }"
+            @click="selectSuggestion"
+        >
+          @AI
+        </div>
+      </div>
+    </div>
     <button @click="sendMessage">Send</button>
   </div>
 </template>
 
 <script>
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
-import FileUpload from './FileUpload.vue'; // Import the new component
+import FileUpload from './FileUpload.vue';
 
 export default {
   components: {
-    FileUpload, // Register FileUpload
+    FileUpload,
   },
   props:{
     receiverID: {
@@ -40,7 +53,11 @@ export default {
   setup(props) {
     const store = useStore();
     const message = ref('');
-    const currentUser = computed(()=> store.getters.currentUser)
+    const messageInput = ref(null);
+    const showSuggestions = ref(false);
+    const currentWordStart = ref(0);
+    const currentWordEnd = ref(0);
+    const currentUser = computed(() => store.getters.currentUser);
     const replyingTo = computed(() => store.state.replyingTo);
     const userIdToName = computed(() => {
       const map = {};
@@ -50,7 +67,7 @@ export default {
       return map;
     });
 
-    // *** NEW: File upload state ***
+    // File upload state
     const uploadedFile = ref(null);
 
     // Typing indicator variables
@@ -74,93 +91,82 @@ export default {
       }
     });
 
-
-    // Clear the timeout when the component is unmounted
     onUnmounted(() => {
       if (draftKey.value) {
         localStorage.setItem(draftKey.value, message.value);
       }
       clearTimeout(typingTimeout);
     });
+
     const handleFileUploaded = (fileInfo) => {
       uploadedFile.value = fileInfo;
     };
+
     const removeFile = () => {
       uploadedFile.value = null;
-    }
+    };
 
-    const sendMessage = () => {
-      if (message.value.trim() !== '' || uploadedFile.value) { // Send even if only file
-        let msg = {};
-        if(props.groupID){
-          msg = {
-            type: "new_message",
-            sender_id: currentUser.value.id,
-            group_id: props.groupID,
-            content: message.value,
-            reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
-            // *** Add file information ***
-            file_name: uploadedFile.value ? uploadedFile.value.name : null,
-            file_path: uploadedFile.value ? uploadedFile.value.path : null,
-            file_type: uploadedFile.value ? uploadedFile.value.type : null,
-            file_size: uploadedFile.value ? uploadedFile.value.size : null,
-            checksum:  uploadedFile.value ? uploadedFile.value.checksum : null, // Pass checksum
-          }
-        } else {
-          msg = {
-            type: "new_message",
-            sender_id: currentUser.value.id,
-            receiver_id: props.receiverID,
-            content: message.value,
-            reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
-            // *** Add file information ***
-            file_name: uploadedFile.value ? uploadedFile.value.name : null,
-            file_path: uploadedFile.value ? uploadedFile.value.path : null,
-            file_type: uploadedFile.value ? uploadedFile.value.type : null,
-            file_size: uploadedFile.value ? uploadedFile.value.size : null,
-            checksum: uploadedFile.value ? uploadedFile.value.checksum : null, // Pass checksum
-          }
+    const handleKeydown = (e) => {
+      if (showSuggestions.value) {
+        if (e.key === 'Tab' || e.key === 'Enter') {
+          e.preventDefault();
+          selectSuggestion();
         }
-
-        // Check if the WebSocket connection exists before sending
-        console.log("Sending message:", msg);
-        if (store.state.ws) {
-          store.state.ws.send(JSON.stringify(msg));
-        } else {
-          console.error("WebSocket connection is not available.");
-          // Consider showing an error message to the user or attempting to reconnect
+        if (e.key === 'Escape') {
+          showSuggestions.value = false;
         }
-
-        message.value = '';
-        store.commit('setReplyingTo', null);
-        uploadedFile.value = null; // Clear the file after sending
-      }
-      if(draftKey.value){
-        localStorage.removeItem(draftKey.value)
+      } else if (e.key === '@') {
+        showSuggestions.value = true;
+        currentWordStart.value = messageInput.value.selectionStart;
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
       }
     };
 
     const handleTyping = () => {
-      clearTimeout(typingTimeout); // Clear existing timeout
+      // Get cursor position
+      const cursorPosition = messageInput.value.selectionStart;
 
-      if(draftKey.value){
-        localStorage.setItem(draftKey.value, message.value)
+      // Check if we're in an @ mention context
+      const textBeforeCursor = message.value.substring(0, cursorPosition);
+      const lastAtSymbol = textBeforeCursor.lastIndexOf('@');
+
+      if (lastAtSymbol !== -1) {
+        const wordAfterAt = textBeforeCursor.substring(lastAtSymbol + 1);
+        // Show suggestions if we're right after @ or if "AI" starts with the typed text
+        if (wordAfterAt === '' || 'AI'.toLowerCase().startsWith(wordAfterAt.toLowerCase())) {
+          showSuggestions.value = true;
+          currentWordStart.value = lastAtSymbol;
+          currentWordEnd.value = cursorPosition;
+        } else {
+          showSuggestions.value = false;
+        }
+      } else {
+        showSuggestions.value = false;
       }
 
-      if((props.groupID || props.receiverID) && store.state.ws){ // Check ws exists
+      // Handle typing indicator
+      clearTimeout(typingTimeout);
+
+      if (draftKey.value) {
+        localStorage.setItem(draftKey.value, message.value);
+      }
+
+      if ((props.groupID || props.receiverID) && store.state.ws) {
         let typingMsg = {};
-        if(props.groupID){
+        if (props.groupID) {
           typingMsg = {
             type: "typing",
             sender_id: currentUser.value.id,
             group_id: props.groupID,
-          }
+          };
         } else {
           typingMsg = {
             type: "typing",
             sender_id: currentUser.value.id,
             receiver_id: props.receiverID,
-          }
+          };
         }
 
         store.state.ws.send(JSON.stringify(typingMsg));
@@ -168,42 +174,114 @@ export default {
         typingTimeout = setTimeout(() => {
           let stopTypingMsg = {};
 
-          if(props.groupID){
+          if (props.groupID) {
             stopTypingMsg = {
               type: "stop_typing",
               sender_id: currentUser.value.id,
               group_id: props.groupID
-            }
+            };
           } else {
             stopTypingMsg = {
               type: "stop_typing",
               sender_id: currentUser.value.id,
               receiver_id: props.receiverID
-            }
+            };
           }
 
-          if (store.state.ws) { // Check ws before sending stop_typing
+          if (store.state.ws) {
             store.state.ws.send(JSON.stringify(stopTypingMsg));
           }
         }, 2000);
       }
     };
 
+    const selectSuggestion = () => {
+      const beforeMention = message.value.substring(0, currentWordStart.value);
+      const afterMention = message.value.substring(currentWordEnd.value);
+      message.value = beforeMention + '@AI ' + afterMention;
+      showSuggestions.value = false;
+
+      // Set cursor position after the inserted mention
+      nextTick(() => {
+        const newPosition = currentWordStart.value + 4; // '@AI '.length = 4
+        messageInput.value.setSelectionRange(newPosition, newPosition);
+        messageInput.value.focus();
+      });
+    };
+
+    const sendMessage = () => {
+      if (message.value.trim() !== '' || uploadedFile.value) {
+        let msg = {};
+        if (props.groupID) {
+          msg = {
+            type: "new_message",
+            sender_id: currentUser.value.id,
+            group_id: props.groupID,
+            content: message.value,
+            reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
+            file_name: uploadedFile.value ? uploadedFile.value.name : null,
+            file_path: uploadedFile.value ? uploadedFile.value.path : null,
+            file_type: uploadedFile.value ? uploadedFile.value.type : null,
+            file_size: uploadedFile.value ? uploadedFile.value.size : null,
+            checksum: uploadedFile.value ? uploadedFile.value.checksum : null,
+          };
+        } else {
+          msg = {
+            type: "new_message",
+            sender_id: currentUser.value.id,
+            receiver_id: props.receiverID,
+            content: message.value,
+            reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
+            file_name: uploadedFile.value ? uploadedFile.value.name : null,
+            file_path: uploadedFile.value ? uploadedFile.value.path : null,
+            file_type: uploadedFile.value ? uploadedFile.value.type : null,
+            file_size: uploadedFile.value ? uploadedFile.value.size : null,
+            checksum: uploadedFile.value ? uploadedFile.value.checksum : null,
+          };
+        }
+
+        if (store.state.ws) {
+          store.state.ws.send(JSON.stringify(msg));
+        } else {
+          console.error("WebSocket connection is not available.");
+        }
+
+        message.value = '';
+        store.commit('setReplyingTo', null);
+        uploadedFile.value = null;
+      }
+      if (draftKey.value) {
+        localStorage.removeItem(draftKey.value);
+      }
+    };
 
     const cancelReply = () => {
       store.commit('setReplyingTo', null);
-    }
+    };
 
-    return { message, sendMessage, handleTyping, replyingTo, cancelReply, userIdToName, handleFileUploaded, removeFile};
+    return {
+      message,
+      messageInput,
+      showSuggestions,
+      currentUser,
+      replyingTo,
+      userIdToName,
+      handleKeydown,
+      handleTyping,
+      selectSuggestion,
+      sendMessage,
+      handleFileUploaded,
+      removeFile,
+      cancelReply
+    };
   }
 };
 </script>
 
 <style scoped>
-/* (Your existing styles - no changes needed here) */
 .chat-input {
   display: flex;
-  flex-direction: column; /* Stack elements vertically */
+  flex-direction: column;
   padding: 10px;
   border-top: 1px solid #ccc;
 }
@@ -217,7 +295,8 @@ export default {
   margin-bottom: 5px;
   border-radius: 4px;
 }
-.reply-preview > span{
+
+.reply-preview > span {
   margin-right: 5px;
 }
 
@@ -228,16 +307,41 @@ export default {
   cursor: pointer;
 }
 
-textarea {
+.input-container {
+  position: relative;
   flex-grow: 1;
-  margin-bottom: 5px; /* Space between textarea and button */
+}
+
+textarea {
+  width: 100%;
+  min-height: 60px;
   padding: 8px;
   border: 1px solid #ccc;
-  border-radius: 5px;
-  resize: none; /* Prevent textarea resizing */
+  border-radius: 4px;
+  resize: vertical;
 }
-.input-container{
-  display: flex;
+
+.suggestions-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  z-index: 1000;
+  margin-bottom: 4px;
+}
+
+.suggestion-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.suggestion-item:hover,
+.suggestion-item.active {
+  background-color: #f0f0f0;
 }
 
 button {
@@ -247,5 +351,10 @@ button {
   border: none;
   border-radius: 5px;
   cursor: pointer;
+  margin-top: 8px;
+}
+
+button:hover {
+  background-color: #45a049;
 }
 </style>
