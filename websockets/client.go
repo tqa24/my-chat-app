@@ -1,12 +1,8 @@
 package websockets
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
-	"github.com/google/generative-ai-go/genai"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -62,7 +58,7 @@ type WebSocketMessage struct {
 }
 
 // ReadPump pumps messages from the websocket connection to the hub.
-func (c *Client) ReadPump(messageSaver MessageSaver, aiClient *genai.Client) {
+func (c *Client) ReadPump(messageSaver MessageSaver) {
 	defer func() {
 		// When client disconnects, send offline status before unregistering
 		offlineMsg := []byte(`{"type": "offline_status", "user_id": "` + c.UserID + `"}`)
@@ -90,127 +86,45 @@ func (c *Client) ReadPump(messageSaver MessageSaver, aiClient *genai.Client) {
 
 		switch wsMessage.Type {
 		case "new_message":
-			// Check for @AI mention:
-			if strings.Contains(strings.ToLower(wsMessage.Content), "@ai") {
-				// Extract the prompt (remove the @AI mention).
-				prompt := strings.Replace(wsMessage.Content, "@AI", "", 1)
-				prompt = strings.TrimSpace(prompt)
-
-				// Use the AI client to generate a response.
-				ctx := context.Background()
-				model := aiClient.GenerativeModel("gemini-pro")
-				resp, err := model.GenerateContent(ctx, genai.Text(prompt))
-				if err != nil {
-					log.Printf("AI generation error: %v", err)
-					// Send an error message back to the user.
-					errMsg := fmt.Sprintf(`{"type": "new_message", "sender_id": "AI", "receiver_id": "%s", "content": "Error generating AI response."}`, c.UserID)
-					c.Hub.Broadcast <- []byte(errMsg)
-					continue
-				}
-
-				// Extract the AI response text.
-				if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
-					if textPart, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
-						// Construct the AI response message.  We send it *as the AI*.
-						aiResponse := fmt.Sprintf(`{"type": "new_message", "sender_id": "AI", "sender_username": "AI", "receiver_id": "%s", "content": "%s"}`, c.UserID, string(textPart))
-
-						// If it's a group message, send to group, otherwise, to user
-						if wsMessage.GroupID != "" {
-							aiResponse = fmt.Sprintf(`{"type": "new_message", "sender_id": "AI","sender_username": "AI", "group_id": "%s", "content": "%s"}`, wsMessage.GroupID, string(textPart))
-						}
-
-						c.Hub.Broadcast <- []byte(aiResponse)
-
-					} else {
-						errMsg := fmt.Sprintf(`{"type": "new_message", "sender_id": "AI", "receiver_id": "%s", "content": "Unexpected AI response format."}`, c.UserID)
-						c.Hub.Broadcast <- []byte(errMsg)
+			if chatService, ok := messageSaver.(interface {
+				SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
+			}); ok {
+				// Call SendMessage with all parameters including file information and checksum
+				if wsMessage.ReceiverID != "" {
+					err := chatService.SendMessage(
+						wsMessage.SenderID,
+						wsMessage.ReceiverID,
+						"",
+						wsMessage.Content,
+						wsMessage.ReplyToMessageID,
+						wsMessage.FileName,
+						wsMessage.FilePath,
+						wsMessage.FileType,
+						wsMessage.FileSize,
+						wsMessage.FileChecksum, // Pass the checksum
+					)
+					if err != nil {
+						log.Printf("Error saving message: %v", err)
 					}
-				} else {
-					errMsg := fmt.Sprintf(`{"type": "new_message", "sender_id": "AI", "receiver_id": "%s", "content": "No response from AI."}`, c.UserID)
-					c.Hub.Broadcast <- []byte(errMsg)
-				}
-				// Save User message
-				if chatService, ok := messageSaver.(interface {
-					SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
-				}); ok {
-					if wsMessage.ReceiverID != "" {
-						err := chatService.SendMessage(
-							wsMessage.SenderID,
-							wsMessage.ReceiverID,
-							"",
-							wsMessage.Content,
-							wsMessage.ReplyToMessageID,
-							wsMessage.FileName,
-							wsMessage.FilePath,
-							wsMessage.FileType,
-							wsMessage.FileSize,
-							wsMessage.FileChecksum, // Pass the checksum
-						)
-						if err != nil {
-							log.Printf("Error saving message: %v", err)
-						}
-					} else if wsMessage.GroupID != "" {
-						err := chatService.SendMessage(
-							wsMessage.SenderID,
-							"",
-							wsMessage.GroupID,
-							wsMessage.Content,
-							wsMessage.ReplyToMessageID,
-							wsMessage.FileName,
-							wsMessage.FilePath,
-							wsMessage.FileType,
-							wsMessage.FileSize,
-							wsMessage.FileChecksum, //Pass the checksum
-						)
-						if err != nil {
-							log.Printf("Error saving message: %v", err)
-						}
+				} else if wsMessage.GroupID != "" {
+					err := chatService.SendMessage(
+						wsMessage.SenderID,
+						"",
+						wsMessage.GroupID,
+						wsMessage.Content,
+						wsMessage.ReplyToMessageID,
+						wsMessage.FileName,
+						wsMessage.FilePath,
+						wsMessage.FileType,
+						wsMessage.FileSize,
+						wsMessage.FileChecksum, //Pass the checksum
+					)
+					if err != nil {
+						log.Printf("Error saving message: %v", err)
 					}
-				} else {
-					log.Printf("Error: messageSaver does not implement SendMessage")
 				}
-
 			} else {
-				// Regular message handling (no @AI mention).
-				if chatService, ok := messageSaver.(interface {
-					SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
-				}); ok {
-					if wsMessage.ReceiverID != "" {
-						err := chatService.SendMessage(
-							wsMessage.SenderID,
-							wsMessage.ReceiverID,
-							"",
-							wsMessage.Content,
-							wsMessage.ReplyToMessageID,
-							wsMessage.FileName,
-							wsMessage.FilePath,
-							wsMessage.FileType,
-							wsMessage.FileSize,
-							wsMessage.FileChecksum,
-						)
-						if err != nil {
-							log.Printf("Error saving message: %v", err)
-						}
-					} else if wsMessage.GroupID != "" {
-						err := chatService.SendMessage(
-							wsMessage.SenderID,
-							"",
-							wsMessage.GroupID,
-							wsMessage.Content,
-							wsMessage.ReplyToMessageID,
-							wsMessage.FileName,
-							wsMessage.FilePath,
-							wsMessage.FileType,
-							wsMessage.FileSize,
-							wsMessage.FileChecksum,
-						)
-						if err != nil {
-							log.Printf("Error saving message: %v", err)
-						}
-					}
-				} else {
-					log.Printf("Error: messageSaver does not implement SendMessage")
-				}
+				log.Printf("Error: messageSaver does not implement SendMessage")
 			}
 
 		case "typing": // Handle typing indicator

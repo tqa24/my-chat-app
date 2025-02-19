@@ -73,9 +73,6 @@ func main() {
 	// *** NEW: Serve uploaded files statically ***
 	r.Static("/uploads", "./uploads")
 
-	// AI route
-	r.POST("/ai", chatHandler.PrivateAIHandler) // NEW: Add the /ai route
-	
 	// Start the server
 	log.Printf("Server listening on port %s", config.AppConfig.AppPort)
 	log.Fatal(http.ListenAndServe(":"+config.AppConfig.AppPort, r))
