@@ -6,5 +6,4 @@ type MessageSaver interface {
 	AddReaction(messageID, userID, emoji string) error
 	RemoveReaction(messageID, userID, emoji string) error
 	UpdateMessageStatus(messageID string, status string) error
-	HandleAIMessage(userID string, message string, originalMessageID string, groupID string) error
 }
