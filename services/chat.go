@@ -14,36 +14,35 @@ import (
 )
 
 type ChatService interface {
-	// Keep this original SendMessage with all parameters for use within your service
-	SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
-	// *** Add SendMessageForWebSocket to the interface ***
+	SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) (string, error)
 	SendMessageForWebSocket(senderID, receiverID, groupID, content, replyToMessageID string) error
 	GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	UpdateMessageStatus(messageID string, status string) error
 	AddReaction(messageID, userID, reaction string) error
 	RemoveReaction(messageID, userID, reaction string) error
+	HandleAIMessage(userID string, message string, originalMessageID string, groupID string) error
 }
 
 type chatService struct {
 	messageRepo repositories.MessageRepository
 	groupRepo   repositories.GroupRepository
-	userRepo    repositories.UserRepository // Inject UserRepository
+	userRepo    repositories.UserRepository
 	hub         *websockets.Hub
+	aiService   AIService
 }
 
-// Update NewChatService to accept GroupRepository and UserRepository
-func NewChatService(messageRepo repositories.MessageRepository, groupRepo repositories.GroupRepository, userRepo repositories.UserRepository, hub *websockets.Hub) ChatService {
-	return &chatService{messageRepo, groupRepo, userRepo, hub}
+func NewChatService(messageRepo repositories.MessageRepository, groupRepo repositories.GroupRepository, userRepo repositories.UserRepository, hub *websockets.Hub, aiService AIService) ChatService {
+	return &chatService{messageRepo, groupRepo, userRepo, hub, aiService}
 }
 
-// *** NEW:  This method matches the requirements for handling WebSocket messages ***
 func (s *chatService) SendMessageForWebSocket(senderID, receiverID, groupID, content, replyToMessageID string) error {
 	// Call the *full* SendMessage, with default values for file-related parameters.
-	return s.SendMessage(senderID, receiverID, groupID, content, replyToMessageID, "", "", "", 0, "")
+	_, err := s.SendMessage(senderID, receiverID, groupID, content, replyToMessageID, "", "", "", 0, "")
+	return err
 }
 
-func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error {
+func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) (string, error) {
 
 	// *** IMPORTANT: Log the received arguments ***
 	log.Printf("chatService.SendMessage: senderID=%s, receiverID=%s, groupID=%s, content=%s, replyToMessageID=%s, fileName=%s, filePath=%s, fileType=%s, fileSize=%d, checksum=%s",
@@ -51,14 +50,14 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 
 	senderUUID, err := uuid.Parse(senderID)
 	if err != nil {
-		return fmt.Errorf("invalid sender ID: %v", err)
+		return "", fmt.Errorf("invalid sender ID: %v", err)
 	}
 
 	var receiverUUID *uuid.UUID
 	if receiverID != "" {
 		id, err := uuid.Parse(receiverID)
 		if err != nil {
-			return fmt.Errorf("invalid receiver ID: %v", err)
+			return "", fmt.Errorf("invalid receiver ID: %v", err)
 		}
 		receiverUUID = &id
 	}
@@ -67,7 +66,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 	if groupID != "" {
 		id, err := uuid.Parse(groupID)
 		if err != nil {
-			return fmt.Errorf("invalid group ID: %v", err)
+			return "", fmt.Errorf("invalid group ID: %v", err)
 		}
 		groupUUID = &id
 	}
@@ -76,7 +75,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 	if replyToMessageID != "" {
 		replyID, err := uuid.Parse(replyToMessageID)
 		if err != nil {
-			return fmt.Errorf("invalid reply_to_message_id: %v", err)
+			return "", fmt.Errorf("invalid reply_to_message_id: %v", err)
 		}
 		replyToUUID = &replyID
 	}
@@ -98,7 +97,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 
 	err = s.messageRepo.Create(message)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// *** Fetch the sender's user information ***
@@ -158,7 +157,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 		s.hub.Broadcast <- msgBytes // Send to specific user
 	}
 
-	return nil
+	return message.ID.String(), nil
 }
 
 func (s *chatService) GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error) {
@@ -383,5 +382,102 @@ func (s *chatService) RemoveReaction(messageID, userID, reaction string) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+func (s *chatService) HandleAIMessage(userID string, message string, originalMessageID string, groupID string) error {
+	// Process the message with AI
+	response, err := s.aiService.ProcessMessage(message)
+	if err != nil {
+		return err
+	}
+
+	// Parse the UUIDs
+	senderUUID := uuid.MustParse("00000000-0000-0000-0000-000000000000") // AI's UUID
+	var receiverUUID *uuid.UUID
+	var groupUUID *uuid.UUID
+
+	if groupID != "" {
+		// This is a group message
+		parsed, err := uuid.Parse(groupID)
+		if err != nil {
+			return err
+		}
+		groupUUID = &parsed
+	} else {
+		// This is a direct message
+		parsed, err := uuid.Parse(userID)
+		if err != nil {
+			return err
+		}
+		receiverUUID = &parsed
+	}
+
+	// Create a reply message from AI
+	originalMsgUUID, err := uuid.Parse(originalMessageID)
+	if err != nil {
+		return fmt.Errorf("invalid original message ID: %v", err)
+	}
+
+	aiMessage := &models.Message{
+		SenderID:         senderUUID,
+		ReceiverID:       receiverUUID,
+		GroupID:          groupUUID,
+		Content:          response,
+		Status:           "sent",
+		ReplyToMessageID: &originalMsgUUID, // Set the reply to the original message
+	}
+
+	// Save the message
+	if err := s.messageRepo.Create(aiMessage); err != nil {
+		return err
+	}
+
+	// Get the original message for the reply preview
+	originalMsg, err := s.messageRepo.GetByID(originalMessageID)
+	if err != nil {
+		log.Printf("Error getting original message: %v", err)
+	}
+
+	// Broadcast the AI response
+	msgData := map[string]interface{}{
+		"type":                "new_message",
+		"sender_id":           "AI",
+		"message_id":          aiMessage.ID.String(),
+		"content":             response,
+		"created_at":          aiMessage.CreatedAt.Format("2006-01-02 15:04:05"),
+		"reply_to_message_id": originalMessageID,
+	}
+
+	if originalMsg != nil {
+		msgData["reply_to_message"] = map[string]interface{}{
+			"id":        originalMsg.ID.String(),
+			"content":   originalMsg.Content,
+			"sender_id": originalMsg.SenderID.String(),
+		}
+	}
+
+	if groupUUID != nil {
+		msgData["group_id"] = groupID
+	} else {
+		msgData["receiver_id"] = userID
+	}
+
+	msgBytes, _ := json.Marshal(msgData)
+
+	// Use the hub's broadcasting mechanism
+	if groupUUID != nil {
+		// Broadcast to group members
+		for memberID := range s.hub.Groups[groupID] {
+			if client, ok := s.hub.Clients[memberID]; ok {
+				client.Send <- msgBytes
+			}
+		}
+	} else {
+		// Send to individual user
+		if client, ok := s.hub.Clients[userID]; ok {
+			client.Send <- msgBytes
+		}
+	}
+
 	return nil
 }

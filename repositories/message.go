@@ -1,10 +1,8 @@
 package repositories
 
 import (
-	"my-chat-app/models"
-	"strings"
-
 	"gorm.io/gorm"
+	"my-chat-app/models"
 )
 
 type MessageRepository interface {
@@ -25,14 +23,14 @@ func NewMessageRepository(db *gorm.DB) MessageRepository {
 
 func (r *messageRepository) Create(message *models.Message) error {
 	result := r.db.Create(message)
-	if result.Error != nil {
-		// If it's a duplicate file error, we can ignore it
-		if strings.Contains(result.Error.Error(), "idx_file_checksum") {
-			return nil
-		}
-		return result.Error
-	}
-	return nil
+	//if result.Error != nil {
+	//	// If it's a duplicate file error, we can ignore it
+	//	if strings.Contains(result.Error.Error(), "idx_file_checksum") {
+	//		return nil
+	//	}
+	//	return result.Error
+	//}
+	return result.Error
 }
 
 func (r *messageRepository) GetConversation(user1ID, user2ID string, limit, offset int) ([]models.Message, int64, error) {
