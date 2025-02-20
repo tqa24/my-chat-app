@@ -3,6 +3,7 @@ package websockets
 import (
 	"encoding/json"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -86,6 +87,31 @@ func (c *Client) ReadPump(messageSaver MessageSaver) {
 
 		switch wsMessage.Type {
 		case "new_message":
+
+			// Check for AI interactions
+			if strings.HasPrefix(wsMessage.Content, "/ai") {
+				// Handle direct AI command
+				if chatService, ok := messageSaver.(interface {
+					HandleAIMessage(userID string, message string) error
+				}); ok {
+					err := chatService.HandleAIMessage(c.UserID, wsMessage.Content)
+					if err != nil {
+						log.Printf("Error handling AI message: %v", err)
+					}
+					continue
+				}
+			} else if strings.Contains(wsMessage.Content, "@AI") {
+				// Handle AI mention
+				if chatService, ok := messageSaver.(interface {
+					HandleAIMessage(userID string, message string) error
+				}); ok {
+					err := chatService.HandleAIMessage(c.UserID, wsMessage.Content)
+					if err != nil {
+						log.Printf("Error handling AI mention: %v", err)
+					}
+				}
+			}
+
 			if chatService, ok := messageSaver.(interface {
 				SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
 			}); ok {

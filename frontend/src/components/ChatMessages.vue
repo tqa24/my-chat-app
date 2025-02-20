@@ -4,6 +4,10 @@
          :key="message.id"
          :class="['message', getMessageClass(message)]"
          :data-message-id="message.id">
+      <!-- Add special styling for AI messages -->
+      <div v-if="message.sender_id === 'AI'" class="ai-message">
+        <i class="fas fa-robot"></i> AI Assistant
+      </div>
       <!-- Add sender's username for group messages -->
       <div class="message-sender" v-if="message.group_id && message.sender_id !== currentUser?.id">
         {{ getSenderUsername(message) }}
@@ -600,5 +604,16 @@ export default {
 
 .sent .action-button:hover {
   background-color: rgba(255, 255, 255, 0.2);
+}
+.ai-message {
+  background-color: #f0f8ff;
+  padding: 8px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.ai-message i {
+  margin-right: 8px;
+  color: #4a90e2;
 }
 </style>

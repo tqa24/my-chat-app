@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/joho/godotenv"
 	"log"
 	"my-chat-app/api"
 	"my-chat-app/config"
@@ -16,6 +17,11 @@ import (
 )
 
 func main() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
+	}
+
 	// Load configuration
 	config.LoadConfig()
 	// Connect to PostgreSQL
@@ -35,9 +41,15 @@ func main() {
 	hub := websockets.NewHub()
 	go hub.Run() // Run the hub in a separate goroutine
 
+	// Initialize AI service
+	aiService, err := services.NewAIService()
+	if err != nil {
+		log.Printf("Warning: Failed to initialize AI service: %v", err)
+	}
+
 	// Initialize services
 	authService := services.NewAuthService(userRepo)
-	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub)
+	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub, aiService)
 	groupService := services.NewGroupService(groupRepo, userRepo, hub)
 
 	// Initialize handlers

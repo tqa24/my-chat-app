@@ -14,30 +14,28 @@ import (
 )
 
 type ChatService interface {
-	// Keep this original SendMessage with all parameters for use within your service
 	SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
-	// *** Add SendMessageForWebSocket to the interface ***
 	SendMessageForWebSocket(senderID, receiverID, groupID, content, replyToMessageID string) error
 	GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	UpdateMessageStatus(messageID string, status string) error
 	AddReaction(messageID, userID, reaction string) error
 	RemoveReaction(messageID, userID, reaction string) error
+	HandleAIMessage(userID string, message string) error
 }
 
 type chatService struct {
 	messageRepo repositories.MessageRepository
 	groupRepo   repositories.GroupRepository
-	userRepo    repositories.UserRepository // Inject UserRepository
+	userRepo    repositories.UserRepository
 	hub         *websockets.Hub
+	aiService   AIService
 }
 
-// Update NewChatService to accept GroupRepository and UserRepository
-func NewChatService(messageRepo repositories.MessageRepository, groupRepo repositories.GroupRepository, userRepo repositories.UserRepository, hub *websockets.Hub) ChatService {
-	return &chatService{messageRepo, groupRepo, userRepo, hub}
+func NewChatService(messageRepo repositories.MessageRepository, groupRepo repositories.GroupRepository, userRepo repositories.UserRepository, hub *websockets.Hub, aiService AIService) ChatService {
+	return &chatService{messageRepo, groupRepo, userRepo, hub, aiService}
 }
 
-// *** NEW:  This method matches the requirements for handling WebSocket messages ***
 func (s *chatService) SendMessageForWebSocket(senderID, receiverID, groupID, content, replyToMessageID string) error {
 	// Call the *full* SendMessage, with default values for file-related parameters.
 	return s.SendMessage(senderID, receiverID, groupID, content, replyToMessageID, "", "", "", 0, "")
@@ -383,5 +381,45 @@ func (s *chatService) RemoveReaction(messageID, userID, reaction string) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+func (s *chatService) HandleAIMessage(userID string, message string) error {
+	// Process the message with AI
+	response, err := s.aiService.ProcessMessage(message)
+	if err != nil {
+		return err
+	}
+
+	// Parse the UUID
+	receiverUUID := uuid.MustParse(userID)
+
+	// Create a system message from AI
+	aiMessage := &models.Message{
+		SenderID:   uuid.MustParse("00000000-0000-0000-0000-000000000000"), // Special ID for AI
+		ReceiverID: &receiverUUID,
+		Content:    response,
+		Status:     "sent",
+	}
+
+	// Save the message
+	if err := s.messageRepo.Create(aiMessage); err != nil {
+		return err
+	}
+
+	// Broadcast the AI response
+	msgData := map[string]interface{}{
+		"type":        "new_message",
+		"sender_id":   "AI",
+		"receiver_id": userID,
+		"content":     response,
+		"message_id":  aiMessage.ID.String(),
+		"created_at":  aiMessage.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+
+	msgBytes, _ := json.Marshal(msgData)
+	if client, ok := s.hub.Clients[userID]; ok {
+		client.Send <- msgBytes
+	}
+
 	return nil
 }
