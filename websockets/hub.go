@@ -1,4 +1,3 @@
-// websockets/hub.go
 package websockets
 
 import (
@@ -150,6 +149,7 @@ func (h *Hub) Run() {
 					continue // Skip further process
 				}
 				//Check group_id
+				//if groupID, ok := msg["group_id"].(string); ok && groupID != "" {  // Removed the unnecessary type-specific check
 				if groupID, ok := msg["group_id"].(string); ok && groupID != "" {
 					// Group message: send only to members of the group
 					if members, ok := h.Groups[groupID]; ok {
@@ -171,9 +171,9 @@ func (h *Hub) Run() {
 							delete(h.Groups, groupID)
 						}
 					}
-					continue // Important: Skip the default broadcast
+					continue // Skip the default broadcast
 					// If not group message, it mean that this message is direct message
-				} else {
+				} else { // Direct message handling
 					// Get receiverID from message
 					if receiverID, ok := msg["receiver_id"].(string); ok && receiverID != "" {
 						if client, ok := h.Clients[receiverID]; ok { // Check client exist
@@ -184,15 +184,15 @@ func (h *Hub) Run() {
 								delete(h.Clients, receiverID)
 							}
 						}
-						// Also send back to sender
-						if senderID, ok := msg["sender_id"].(string); ok && senderID != "" {
-							if client, ok := h.Clients[senderID]; ok {
-								select {
-								case client.Send <- message:
-								default:
-									close(client.Send)
-									delete(h.Clients, senderID)
-								}
+					}
+					// Also send back to sender
+					if senderID, ok := msg["sender_id"].(string); ok && senderID != "" {
+						if client, ok := h.Clients[senderID]; ok {
+							select {
+							case client.Send <- message:
+							default:
+								close(client.Send)
+								delete(h.Clients, senderID)
 							}
 						}
 					}
