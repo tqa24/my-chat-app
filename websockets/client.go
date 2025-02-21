@@ -63,7 +63,6 @@ func (c *Client) ReadPump(messageSaver MessageSaver) {
 		// When client disconnects, send offline status before unregistering
 		offlineMsg := []byte(`{"type": "offline_status", "user_id": "` + c.UserID + `"}`)
 		c.Hub.Broadcast <- offlineMsg
-
 		c.Hub.Unregister <- c
 		c.Conn.Close()
 	}()
@@ -86,47 +85,29 @@ func (c *Client) ReadPump(messageSaver MessageSaver) {
 
 		switch wsMessage.Type {
 		case "new_message":
+			// We *only* need to call SendMessage.  AI handling is now *inside* SendMessage.
 			if chatService, ok := messageSaver.(interface {
-				SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
+				SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) (string, error)
 			}); ok {
-				// Call SendMessage with all parameters including file information and checksum
-				if wsMessage.ReceiverID != "" {
-					err := chatService.SendMessage(
-						wsMessage.SenderID,
-						wsMessage.ReceiverID,
-						"",
-						wsMessage.Content,
-						wsMessage.ReplyToMessageID,
-						wsMessage.FileName,
-						wsMessage.FilePath,
-						wsMessage.FileType,
-						wsMessage.FileSize,
-						wsMessage.FileChecksum, // Pass the checksum
-					)
-					if err != nil {
-						log.Printf("Error saving message: %v", err)
-					}
-				} else if wsMessage.GroupID != "" {
-					err := chatService.SendMessage(
-						wsMessage.SenderID,
-						"",
-						wsMessage.GroupID,
-						wsMessage.Content,
-						wsMessage.ReplyToMessageID,
-						wsMessage.FileName,
-						wsMessage.FilePath,
-						wsMessage.FileType,
-						wsMessage.FileSize,
-						wsMessage.FileChecksum, //Pass the checksum
-					)
-					if err != nil {
-						log.Printf("Error saving message: %v", err)
-					}
+				_, err := chatService.SendMessage( // We don't need the messageID *here* anymore
+					wsMessage.SenderID,
+					wsMessage.ReceiverID,
+					wsMessage.GroupID,
+					wsMessage.Content,
+					wsMessage.ReplyToMessageID,
+					wsMessage.FileName,
+					wsMessage.FilePath,
+					wsMessage.FileType,
+					wsMessage.FileSize,
+					wsMessage.FileChecksum,
+				)
+				if err != nil {
+					log.Printf("Error saving message: %v", err)
 				}
 			} else {
 				log.Printf("Error: messageSaver does not implement SendMessage")
 			}
-
+			
 		case "typing": // Handle typing indicator
 			wsMessage.SenderID = c.UserID
 			// Broadcast typing indicator to the recipient

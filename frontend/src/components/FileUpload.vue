@@ -1,6 +1,6 @@
 <template>
   <div class="file-upload">
-    <input type="file" ref="fileInput" @change="handleFileChange" style="display: none;" />
+    <input type="file" ref="fileInput" @change="handleFileChange" style="display: none;" accept="*" />
     <button type="button" @click="triggerFileSelect">
       <i class="fas fa-paperclip"></i> Attach File
     </button>
@@ -11,13 +11,18 @@
         </button>
     </span>
     <span v-if="uploadError" class="upload-error">{{ uploadError }}</span>
+
+    <!-- Image Preview -->
+    <div v-if="previewUrl && isImage" class="image-preview-container">
+      <img :src="previewUrl" alt="Image Preview" class="image-preview" />
+    </div>
   </div>
 </template>
 
 <script>
 import axios from 'axios';
 import { ref } from 'vue';
-import { sha256 } from 'js-sha256'; // Import a SHA-256 library
+import { sha256 } from 'js-sha256';
 
 export default {
   emits: ['file-uploaded', 'file-removed'],
@@ -25,6 +30,8 @@ export default {
     const fileInput = ref(null);
     const selectedFile = ref(null);
     const uploadError = ref('');
+    const previewUrl = ref(''); // Store the preview URL
+    const isImage = ref(false); // Track if the selected file is an image
 
     const triggerFileSelect = () => {
       fileInput.value.click();
@@ -36,29 +43,45 @@ export default {
         if (file.size > 25 * 1024 * 1024) {
           uploadError.value = 'File is too large (max 25MB)';
           selectedFile.value = null;
+          previewUrl.value = ''; // Clear preview
+          isImage.value = false;
           emit('file-removed');
           return;
+        }
+
+        selectedFile.value = file;
+        uploadError.value = '';
+        isImage.value = file.type.startsWith('image/'); // Check if it's an image
+
+        // *** Generate Preview URL *** (only if it's an image)
+        if (isImage.value) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            previewUrl.value = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        } else {
+          previewUrl.value = ''; // Clear preview if not an image
         }
 
         // Calculate SHA-256 checksum *before* upload.
         const arrayBuffer = await file.arrayBuffer();
         const hash = sha256(arrayBuffer);
-
-        selectedFile.value = file;
-        uploadError.value = '';
         uploadFile(hash); // Pass the checksum
       } else {
         selectedFile.value = null;
+        previewUrl.value = ''; // Clear preview on file removal
+        isImage.value = false;
         emit('file-removed');
       }
     };
 
-    const uploadFile = async (checksum) => { // Add checksum parameter
+    const uploadFile = async (checksum) => {
       if (!selectedFile.value) return;
 
       const formData = new FormData();
       formData.append('file', selectedFile.value);
-      formData.append('checksum', checksum); // Send checksum with the request
+      formData.append('checksum', checksum);
 
       try {
         const response = await axios.post('http://localhost:8080/upload', formData, {
@@ -68,17 +91,15 @@ export default {
         });
 
         if (response.data.duplicate) {
-          // Handle duplicate file.  Don't treat as an error.
           emit('file-uploaded', {
             name: response.data.filename,
             path: response.data.filepath,
             type: response.data.filetype,
             size: response.data.filesize,
-            checksum: response.data.checksum, // Include for consistency
+            checksum: response.data.checksum,
           });
-          uploadError.value = ''; // Clear any error
+          uploadError.value = '';
         } else {
-          // Handle new file upload.
           emit('file-uploaded', {
             name: response.data.filename,
             path: response.data.filepath,
@@ -93,6 +114,8 @@ export default {
         uploadError.value = 'Upload failed: ' + (error.response ? error.response.data.error : error.message);
         emit('file-removed');
         selectedFile.value = null;
+        previewUrl.value = ''; // Clear preview on error
+        isImage.value = false;
       }
     };
 
@@ -100,6 +123,8 @@ export default {
       selectedFile.value = null;
       fileInput.value.value = null;
       uploadError.value = '';
+      previewUrl.value = ''; // Clear the preview URL
+      isImage.value = false;
       emit('file-removed');
     };
 
@@ -111,7 +136,7 @@ export default {
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
-    return { fileInput, selectedFile, uploadError, triggerFileSelect, handleFileChange, removeFile, formatFileSize };
+    return { fileInput, selectedFile, uploadError, previewUrl, isImage, triggerFileSelect, handleFileChange, removeFile, formatFileSize };
   },
 };
 </script>
@@ -120,7 +145,7 @@ export default {
 .file-upload {
   display: flex;
   align-items: center;
-  margin-bottom: 5px; /* Add some spacing */
+  margin-bottom: 5px;
 }
 
 .file-info {
@@ -137,5 +162,18 @@ export default {
   background: none;
   border: none;
   padding: 0;
+}
+
+/* Style for the image preview */
+.image-preview-container {
+  margin-top: 5px;
+  max-width: 100%; /* Prevent overflow */
+}
+
+.image-preview {
+  max-width: 100px; /* Control preview size */
+  max-height: 100px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 </style>

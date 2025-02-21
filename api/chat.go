@@ -258,7 +258,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	}
 
 	// Send the message
-	err := h.chatService.SendMessage(
+	_, err := h.chatService.SendMessage(
 		wsMessage.SenderID,
 		wsMessage.ReceiverID,
 		wsMessage.GroupID,

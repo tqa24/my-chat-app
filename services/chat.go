@@ -8,15 +8,14 @@ import (
 	"my-chat-app/repositories"
 	"my-chat-app/websockets"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 )
 
 type ChatService interface {
-	// Keep this original SendMessage with all parameters for use within your service
-	SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error
-	// *** Add SendMessageForWebSocket to the interface ***
+	SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) (string, error)
 	SendMessageForWebSocket(senderID, receiverID, groupID, content, replyToMessageID string) error
 	GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
 	GetGroupConversation(groupID string, pageStr, pageSizeStr string) ([]models.Message, int64, error)
@@ -28,37 +27,35 @@ type ChatService interface {
 type chatService struct {
 	messageRepo repositories.MessageRepository
 	groupRepo   repositories.GroupRepository
-	userRepo    repositories.UserRepository // Inject UserRepository
+	userRepo    repositories.UserRepository
 	hub         *websockets.Hub
+	aiService   AIService
 }
 
-// Update NewChatService to accept GroupRepository and UserRepository
-func NewChatService(messageRepo repositories.MessageRepository, groupRepo repositories.GroupRepository, userRepo repositories.UserRepository, hub *websockets.Hub) ChatService {
-	return &chatService{messageRepo, groupRepo, userRepo, hub}
+func NewChatService(messageRepo repositories.MessageRepository, groupRepo repositories.GroupRepository, userRepo repositories.UserRepository, hub *websockets.Hub, aiService AIService) ChatService {
+	return &chatService{messageRepo, groupRepo, userRepo, hub, aiService}
 }
 
-// *** NEW:  This method matches the requirements for handling WebSocket messages ***
 func (s *chatService) SendMessageForWebSocket(senderID, receiverID, groupID, content, replyToMessageID string) error {
 	// Call the *full* SendMessage, with default values for file-related parameters.
-	return s.SendMessage(senderID, receiverID, groupID, content, replyToMessageID, "", "", "", 0, "")
+	_, err := s.SendMessage(senderID, receiverID, groupID, content, replyToMessageID, "", "", "", 0, "")
+	return err
 }
 
-func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) error {
-
-	// *** IMPORTANT: Log the received arguments ***
+func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) (string, error) {
 	log.Printf("chatService.SendMessage: senderID=%s, receiverID=%s, groupID=%s, content=%s, replyToMessageID=%s, fileName=%s, filePath=%s, fileType=%s, fileSize=%d, checksum=%s",
 		senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType, fileSize, checksum)
 
 	senderUUID, err := uuid.Parse(senderID)
 	if err != nil {
-		return fmt.Errorf("invalid sender ID: %v", err)
+		return "", fmt.Errorf("invalid sender ID: %v", err)
 	}
 
 	var receiverUUID *uuid.UUID
 	if receiverID != "" {
 		id, err := uuid.Parse(receiverID)
 		if err != nil {
-			return fmt.Errorf("invalid receiver ID: %v", err)
+			return "", fmt.Errorf("invalid receiver ID: %v", err)
 		}
 		receiverUUID = &id
 	}
@@ -67,7 +64,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 	if groupID != "" {
 		id, err := uuid.Parse(groupID)
 		if err != nil {
-			return fmt.Errorf("invalid group ID: %v", err)
+			return "", fmt.Errorf("invalid group ID: %v", err)
 		}
 		groupUUID = &id
 	}
@@ -76,59 +73,67 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 	if replyToMessageID != "" {
 		replyID, err := uuid.Parse(replyToMessageID)
 		if err != nil {
-			return fmt.Errorf("invalid reply_to_message_id: %v", err)
+			return "", fmt.Errorf("invalid reply_to_message_id: %v", err)
 		}
 		replyToUUID = &replyID
 	}
 
-	message := &models.Message{
+	// Check for AI mention *before* saving the original message.
+	isAIMention := strings.Contains(content, "@AI")
+	var aiResponse string
+	if isAIMention {
+		// Call the AI service *before* creating the initial message
+		aiResponse, err = s.aiService.ProcessMessage(content)
+		if err != nil {
+			log.Printf("Error processing AI message: %v", err)
+			//  Return the original message and add an error
+			aiResponse = "Sorry, I couldn't process your request."
+		}
+	}
+
+	// Create the user's message (always create this).
+	userMessage := &models.Message{
 		SenderID:         senderUUID,
 		ReceiverID:       receiverUUID,
 		GroupID:          groupUUID,
-		Content:          content,
+		Content:          content, // Original user message content
 		Status:           "sent",
-		ReplyToMessageID: replyToUUID, // Set ReplyToMessageID
-		// *** NEW: Set File Fields ***
-		FileName:     fileName,
-		FilePath:     filePath,
-		FileType:     fileType,
-		FileSize:     fileSize,
-		FileChecksum: checksum, // Save the checksum
+		ReplyToMessageID: replyToUUID,
+		FileName:         fileName,
+		FilePath:         filePath,
+		FileType:         fileType,
+		FileSize:         fileSize,
+		FileChecksum:     checksum,
 	}
 
-	err = s.messageRepo.Create(message)
+	//Save User message to DB.
+	err = s.messageRepo.Create(userMessage)
 	if err != nil {
-		return err
+		return "", err
 	}
-
-	// *** Fetch the sender's user information ***
+	// Get Sender Username.
 	senderUser, err := s.userRepo.GetByID(senderID)
 	if err != nil {
-		// Handle error (e.g., log it, but don't necessarily stop the message sending)
 		fmt.Printf("Error fetching sender user: %v\n", err)
-		// You might choose to send a "system" message or a placeholder username here.
 	}
 
-	// Construct a map for the message data
-	msgData := map[string]interface{}{
+	// Prepare the user message data for broadcasting.
+	userMsgData := map[string]interface{}{
 		"type":            "new_message",
 		"sender_id":       senderID,
-		"sender_username": senderUser.Username, // Include sender's username
+		"sender_username": senderUser.Username,
 		"content":         content,
-		"message_id":      message.ID.String(),
-		"created_at":      message.CreatedAt.Format("2006-01-02 15:04:05"),
-		// *** Include file info in the broadcast ***
-		"file_name": fileName,
-		"file_path": filePath,
-		"file_type": fileType,
-		"file_size": fileSize,
+		"message_id":      userMessage.ID.String(),
+		"created_at":      userMessage.CreatedAt.Format("2006-01-02 15:04:05"),
+		"file_name":       fileName,
+		"file_path":       filePath,
+		"file_type":       fileType,
+		"file_size":       fileSize,
 	}
-	// Add reply_to_message_id if present
 	if replyToUUID != nil {
-		msgData["reply_to_message_id"] = replyToMessageID
-		// Get the original message to include its content
+		userMsgData["reply_to_message_id"] = replyToMessageID
 		if originalMsg, err := s.messageRepo.GetByID(replyToMessageID); err == nil {
-			msgData["reply_to_message"] = map[string]interface{}{
+			userMsgData["reply_to_message"] = map[string]interface{}{
 				"id":        originalMsg.ID.String(),
 				"content":   originalMsg.Content,
 				"sender_id": originalMsg.SenderID.String(),
@@ -136,29 +141,104 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 		}
 	}
 
-	// Add receiver_id or group_id based on message type
+	//Add receiver_id and group_id to message data.
 	if groupUUID != nil {
-		msgData["group_id"] = groupID
-		// Group message:  Broadcast to group members *only*.
-		// Loop through all users of this group
+		userMsgData["group_id"] = groupID
+	} else if receiverUUID != nil {
+		userMsgData["receiver_id"] = receiverID
+	}
+
+	// ---  BROADCAST USER MESSAGE (Corrected) ---
+	userMsgBytes, _ := json.Marshal(userMsgData)
+	if groupUUID != nil {
+		// Group message:  Broadcast to group members.
 		for userID := range s.hub.Groups[groupID] {
 			if client, ok := s.hub.Clients[userID]; ok {
-				msgBytes, _ := json.Marshal(msgData) // Convert to JSON
-				select {
-				case client.Send <- msgBytes: // Send the JSON message
-				default:
-					close(client.Send)
-					delete(s.hub.Clients, userID)
-				}
+				client.Send <- userMsgBytes // Send to each member
 			}
 		}
 	} else if receiverUUID != nil {
-		msgData["receiver_id"] = receiverID
-		msgBytes, _ := json.Marshal(msgData)
-		s.hub.Broadcast <- msgBytes // Send to specific user
+		// Direct Message: Send to *BOTH* sender and receiver.
+		if senderClient, ok := s.hub.Clients[senderID]; ok {
+			senderClient.Send <- userMsgBytes
+		}
+		if receiverClient, ok := s.hub.Clients[receiverID]; ok {
+			receiverClient.Send <- userMsgBytes
+		}
 	}
+	// --- END BROADCAST USER MESSAGE ---
 
-	return nil
+	// If it's an AI mention, create *and send* the AI's reply.
+	if isAIMention {
+		aiSenderUUID := uuid.MustParse("00000000-0000-0000-0000-000000000000") // AI's UUID
+
+		// For direct messages, set receiver to original sender
+		var aiReceiverUUID *uuid.UUID
+		if groupUUID == nil {
+			// In direct messages, AI responds to the original sender
+			aiReceiverUUID = &senderUUID
+		} else {
+			// In group messages, keep the same group context
+			aiReceiverUUID = receiverUUID
+		}
+
+		aiMessage := &models.Message{
+			SenderID:         aiSenderUUID, // AI is the sender
+			ReceiverID:       aiReceiverUUID,
+			GroupID:          groupUUID,  // Same group as original message
+			Content:          aiResponse, // The AI's generated response
+			Status:           "sent",
+			ReplyToMessageID: &userMessage.ID, // Reply to the *user's* message
+		}
+
+		if err := s.messageRepo.Create(aiMessage); err != nil {
+			return "", err
+		}
+
+		// Prepare AI message for broadcast.
+		aiMsgData := map[string]interface{}{
+			"type":                "new_message",
+			"sender_id":           "AI",           // Clearly indicate AI sender
+			"sender_username":     "AI_Assistant", // Set sender username for AI
+			"message_id":          aiMessage.ID.String(),
+			"content":             aiResponse,
+			"created_at":          aiMessage.CreatedAt.Format("2006-01-02 15:04:05"),
+			"reply_to_message_id": userMessage.ID.String(), // Reply to the user's message
+			// Include reply message data
+			"reply_to_message": map[string]interface{}{
+				"id":        userMessage.ID.String(),
+				"content":   userMessage.Content,
+				"sender_id": userMessage.SenderID.String(),
+			},
+		}
+		if groupUUID != nil {
+			aiMsgData["group_id"] = groupID
+		} else if receiverUUID != nil {
+			aiMsgData["receiver_id"] = receiverID
+		}
+
+		// --- BROADCAST AI RESPONSE (Corrected) ---
+		aiMsgBytes, _ := json.Marshal(aiMsgData)
+		if groupUUID != nil {
+			// Group message: send to all group members
+			for userID := range s.hub.Groups[groupID] {
+				if client, ok := s.hub.Clients[userID]; ok {
+					client.Send <- aiMsgBytes
+				}
+			}
+		} else if receiverUUID != nil {
+			// Direct Message:  Send to *BOTH* sender and receiver.
+			if senderClient, ok := s.hub.Clients[senderID]; ok {
+				senderClient.Send <- aiMsgBytes
+			}
+			if receiverClient, ok := s.hub.Clients[receiverID]; ok {
+				receiverClient.Send <- aiMsgBytes
+			}
+		}
+		// --- END BROADCAST AI RESPONSE ---
+		return aiMessage.ID.String(), nil
+	}
+	return userMessage.ID.String(), nil // Return the original message's ID.
 }
 
 func (s *chatService) GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error) {
