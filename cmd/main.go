@@ -78,11 +78,12 @@ func main() {
 	r.GET("/users/:id/groups", groupHandler.ListGroupsForUser)      // List groups for a user
 	r.GET("/groups", groupHandler.GetAllGroups)                     // Get all groups
 	r.GET("/groups/:id/messages", chatHandler.GetGroupConversation) // For get group conversation
-	r.POST("/messages/:id/react", chatHandler.AddReaction)          // NEW: Add reaction
-	r.DELETE("/messages/:id/react", chatHandler.RemoveReaction)     // NEW: Remove reaction
-	// *** NEW: File Upload Route ***
+	r.POST("/messages/:id/react", chatHandler.AddReaction)          // Add reaction
+	r.DELETE("/messages/:id/react", chatHandler.RemoveReaction)     // Remove reaction
+	r.GET("/groups/:id/members", groupHandler.GetGroupMembers)      // Get member from group
+	// *** File Upload Route ***
 	r.POST("/upload", chatHandler.UploadFile)
-	// *** NEW: Serve uploaded files statically ***
+	// *** Serve uploaded files statically ***
 	r.Static("/uploads", "./uploads")
 
 	// Start the server

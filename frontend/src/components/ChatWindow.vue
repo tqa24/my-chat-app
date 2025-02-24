@@ -34,6 +34,20 @@
           </div>
           <span v-if="copyMessage" class="copy-message">{{ copyMessage }}</span>
         </div>
+        <!-- Add section to display group members -->
+        <div class="group-members">
+          <h3>Members</h3>
+          <ul>
+            <li v-for="member in groupMembers" :key="member.id">
+              {{ member.username }}
+              <span :class="{ 'online-dot': isUserOnline(member.id) }"></span>
+            </li>
+          </ul>
+        </div>
+        <!--Add loading -->
+        <div v-if="loadingMembers" class="loading-members">
+          Loading members...
+        </div>
         <div class="chat-messages" ref="messagesContainer" @scroll="handleScroll">
           <div v-if="loadingMore" class="loading-indicator">Loading...</div>
           <ChatMessages :messages="filteredMessages"/>
@@ -127,6 +141,9 @@ export default {
     const userGroups = ref([]);
     const copyMessage = ref("");
     const showLeaveModal = ref(false);
+    //Get group member from store.
+    const groupMembers = computed(() => store.getters.groupMembers);
+    const loadingMembers = ref(false);
     const confirmLeaveGroup = () => {
       showLeaveModal.value = true;
     };
@@ -527,6 +544,30 @@ export default {
           });
     };
 
+    //Add isUserOnline function.
+    const isUserOnline = (userId) => {
+      return store.getters.getUsersOnline.some(user => user.id === userId && user.status === 'online');
+    };
+    // Watch for changes in the selectedGroup
+    watch(
+        () => selectedGroup.value,
+        async (newGroup, oldGroup) => {
+          //If change to another group. Clean old members.
+          if(oldGroup && oldGroup.id){
+            store.dispatch('clearGroupMembers');
+          }
+
+          if (newGroup && newGroup.id) {
+            loadingMembers.value = true; // Set loading to true
+            await store.dispatch("fetchGroupMembers", newGroup.id);
+            loadingMembers.value = false;// Set loading to false
+          } else {
+            store.dispatch("clearGroupMembers");
+          }
+        }, {deep: true}
+    );
+
+
     return {
       currentUser,
       // ws, // No need to return this directly
@@ -551,10 +592,13 @@ export default {
       formatUnreadCount,
       fetchGroupMessages,
       fetchMessages,
+      isUserOnline,
       getUnreadCount: (id) => store.getters.getUnreadCount(id),
       showLeaveModal,
       confirmLeaveGroup,
       leaveGroup,
+      groupMembers,
+      loadingMembers,
     };
   },
 };
@@ -663,7 +707,6 @@ export default {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.8em;
-  transition: background-color 0.2s;
 }
 
 .copy-button:hover {
@@ -783,5 +826,31 @@ export default {
 .modal-buttons .confirm {
   background-color: #dc3545;
   color: white;
+}
+/* Add style  */
+.group-members {
+  margin-top: 10px;
+  padding: 10px;
+  border-top: 1px solid #eee;
+}
+
+.group-members h3 {
+  margin-bottom: 5px;
+}
+
+.group-members ul {
+  list-style: none;
+  padding: 0;
+}
+
+.group-members li {
+  padding: 5px 0;
+  display: flex;
+  align-items: center;
+}
+/* Add loading  */
+.loading-members {
+  font-style: italic;
+  color: gray;
 }
 </style>

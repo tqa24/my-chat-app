@@ -49,7 +49,7 @@ type WebSocketMessage struct {
 	ReplyToMessageID string `json:"reply_to_message_id"`
 	Emoji            string `json:"emoji"`
 	Status           string `json:"status"` // Add this for message status
-	// *** NEW: File fields ***
+	// File fields ***
 	FileName     string `json:"file_name"`
 	FilePath     string `json:"file_path"`
 	FileType     string `json:"file_type"`
@@ -107,7 +107,7 @@ func (c *Client) ReadPump(messageSaver MessageSaver) {
 			} else {
 				log.Printf("Error: messageSaver does not implement SendMessage")
 			}
-			
+
 		case "typing": // Handle typing indicator
 			wsMessage.SenderID = c.UserID
 			// Broadcast typing indicator to the recipient

@@ -50,7 +50,7 @@ export default {
       return map;
     });
 
-    // *** NEW: File upload state ***
+    // *** File upload state ***
     const uploadedFile = ref(null);
 
     // Typing indicator variables

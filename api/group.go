@@ -157,3 +157,27 @@ func (h *GroupHandler) GetAllGroups(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, groups)
 }
+func (h *GroupHandler) GetGroupMembers(c *gin.Context) {
+	groupID := c.Param("id")
+	members, err := h.groupService.GetGroupMembers(groupID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve group members"})
+		return
+	}
+	//Convert model to DTO.
+	type UserResponse struct {
+		ID       string `json:"id"`
+		Username string `json:"username"`
+		Email    string `json:"email"`
+	}
+	var memberResponses []UserResponse
+	for _, member := range members {
+		memberResponses = append(memberResponses, UserResponse{
+			ID:       member.ID.String(),
+			Username: member.Username,
+			Email:    member.Email,
+		})
+	}
+
+	c.JSON(http.StatusOK, memberResponses)
+}

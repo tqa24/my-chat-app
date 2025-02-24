@@ -19,10 +19,10 @@ type Message struct {
 	Sender           *User          `gorm:"foreignKey:SenderID;references:ID" json:"sender"`                             // Don't include in JSON
 	Receiver         *User          `gorm:"foreignKey:ReceiverID;references:ID" json:"receiver"`                         // Don't include in JSON
 	Group            *Group         `gorm:"foreignKey:GroupID;references:ID" json:"group"`                               // Add Group
-	Reactions        datatypes.JSON `gorm:"type:jsonb" json:"reactions"`                                                 // NEW: Reactions as JSONB
-	ReplyToMessageID *uuid.UUID     `gorm:"type:uuid" json:"reply_to_message_id"`                                        // NEW: Reply-to ID
-	ReplyToMessage   *Message       `gorm:"foreignKey:ReplyToMessageID;references:ID" json:"reply_to_message,omitempty"` // NEW: Include the replied-to message (optional)
-	// *** NEW: File Upload Fields ***
+	Reactions        datatypes.JSON `gorm:"type:jsonb" json:"reactions"`                                                 // Reactions as JSONB
+	ReplyToMessageID *uuid.UUID     `gorm:"type:uuid" json:"reply_to_message_id"`                                        // Reply-to ID
+	ReplyToMessage   *Message       `gorm:"foreignKey:ReplyToMessageID;references:ID" json:"reply_to_message,omitempty"` // Include the replied-to message
+	// *** File Upload Fields ***
 	FileName     string `gorm:"type:varchar(255)" json:"file_name"` // Original filename
 	FilePath     string `gorm:"type:varchar(255)" json:"file_path"` // Path to stored file (relative to upload dir)
 	FileType     string `gorm:"type:varchar(100)" json:"file_type"` // image/jpeg, application/pdf, etc.

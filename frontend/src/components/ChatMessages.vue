@@ -122,7 +122,7 @@ export default {
     const messagesContainer = ref(null);
     const currentUser = computed(() => store.state.user);
     const availableReactions = ['👍', '❤️', '😂', '😮', '😢', '😠'];
-// *** NEW: For Full Image Modal ***
+// *** For Full Image Modal ***
     const showModal = ref(false);
     const modalImageUrl = ref('');
     const showFullImage = (imageUrl) => {
@@ -275,7 +275,7 @@ export default {
           return '';
       }
     };
-// *** NEW: Method to get the sender's username ***
+// *** Method to get the sender's username ***
     const getSenderUsername = (message) => {
       if (message.sender_username) { //Prioritize
         return message.sender_username
@@ -284,7 +284,7 @@ export default {
       const sender = store.getters.getUserById(message.sender_id);
       return sender ? sender.username : 'Unknown User';
     };
-// *** NEW: Check if a file is an image ***
+// *** Check if a file is an image ***
     const isImage = (fileType) => {
       return fileType.startsWith('image/');
     };
@@ -615,5 +615,8 @@ export default {
 .ai-message i {
   margin-right: 8px;
   color: #4a90e2;
+}
+.message-text {
+  white-space: pre-wrap;
 }
 </style>

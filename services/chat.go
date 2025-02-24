@@ -160,7 +160,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 		userMsgData["receiver_id"] = receiverID
 	}
 
-	// ---  BROADCAST USER MESSAGE (Corrected) ---
+	// ---  BROADCAST USER MESSAGE ---
 	userMsgBytes, _ := json.Marshal(userMsgData)
 	if groupUUID != nil {
 		// Group message:  Broadcast to group members.
@@ -229,7 +229,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 			aiMsgData["receiver_id"] = receiverID
 		}
 
-		// --- BROADCAST AI RESPONSE (Corrected) ---
+		// --- BROADCAST AI RESPONSE ---
 		aiMsgBytes, _ := json.Marshal(aiMsgData)
 		if groupUUID != nil {
 			// Group message: send to all group members

@@ -34,10 +34,7 @@ export default {
 
     const handleSubmit = async () => {
       try {
-        // No trimming needed here anymore (we handle it correctly now)
-
         await axios.post('http://localhost:8080/register', {
-          // Use the correct keys: username, email, password (all lowercase)
           username: username.value,
           email: email.value,
           password: password.value,

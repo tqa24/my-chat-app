@@ -11,6 +11,7 @@ export default createStore({
         selectedGroup: null,
         unreadCounts: {},
         replyingTo: null,
+        groupMembers: [], // Store group members
     },
     mutations: {
         setUser(state, user) {
@@ -163,6 +164,12 @@ export default createStore({
 
             state.messages.splice(messageIndex, 1, message);
         },
+        setGroupMembers(state, members) {
+            state.groupMembers = members;
+        },
+        clearGroupMembers(state) {
+            state.groupMembers = [];
+        },
     },
     actions: {
         login({ commit }, user) {
@@ -250,6 +257,18 @@ export default createStore({
         updateReaction({ commit }, payload) {
             commit('updateReaction', payload);
         },
+        async fetchGroupMembers({ commit }, groupID) {
+            try {
+                const response = await axios.get(`http://localhost:8080/groups/${groupID}/members`);
+                commit('setGroupMembers', response.data);
+            } catch (error) {
+                console.error("Failed to fetch group members:", error);
+                // Optionally, commit an error to the store
+            }
+        },
+        clearGroupMembers({ commit }) {
+            commit('clearGroupMembers');
+        },
     },
     getters: {
         currentUser: state => state.user,
@@ -263,6 +282,7 @@ export default createStore({
         },
         getUserById: (state) => (userId) => {
             return state.usersOnline.find(user => user.id === userId);
-        }
+        },
+        groupMembers: state => state.groupMembers,
     },
 });

@@ -22,6 +22,7 @@ type GroupService interface {
 	GetGroupByID(id string) (*models.Group, error)
 	ListGroupsForUser(userID string) ([]*models.Group, error)
 	GetAllGroups() ([]models.Group, error)
+	GetGroupMembers(groupID string) ([]*models.User, error)
 }
 
 type groupService struct {
@@ -177,4 +178,7 @@ func generateUniqueCode() (string, error) {
 	}
 	return strings.ReplaceAll(base64.URLEncoding.EncodeToString(bytes), "_", ""), nil
 
+}
+func (s *groupService) GetGroupMembers(groupID string) ([]*models.User, error) {
+	return s.groupRepo.GetMembers(groupID)
 }
