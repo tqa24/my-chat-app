@@ -3,10 +3,12 @@ package api
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/streadway/amqp"
 	"gorm.io/gorm"
 	"io"
 	"log"
@@ -21,17 +23,18 @@ import (
 
 const (
 	MaxFileSize = 25 * 1024 * 1024 // 25 MB
-	UploadDir   = "./uploads"      // IMPORTANT:  Create this directory in your project root
+	UploadDir   = "./uploads"      // Create directory in project root
 )
 
 type ChatHandler struct {
 	chatService services.ChatService
 	hub         *websockets.Hub // Inject the WebSocket hub
 	db          *gorm.DB
+	amqpChannel *amqp.Channel
 }
 
-func NewChatHandler(chatService services.ChatService, hub *websockets.Hub, db *gorm.DB) *ChatHandler {
-	return &ChatHandler{chatService, hub, db}
+func NewChatHandler(chatService services.ChatService, hub *websockets.Hub, db *gorm.DB, amqpChannel *amqp.Channel) *ChatHandler {
+	return &ChatHandler{chatService, hub, db, amqpChannel}
 }
 
 // GetConversation handles retrieving the conversation history between two users.
@@ -233,7 +236,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// Basic validation
+	// Basic validation (remains largely the same)
 	if wsMessage.SenderID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing sender_id"})
 		return
@@ -248,7 +251,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// If this is a file message, verify the file exists
+	// File existence check (remains the same)
 	if wsMessage.FileName != "" {
 		filePath := filepath.Join(UploadDir, wsMessage.FileName)
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -256,27 +259,31 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 			return
 		}
 	}
-
-	// Send the message
-	_, err := h.chatService.SendMessage(
-		wsMessage.SenderID,
-		wsMessage.ReceiverID,
-		wsMessage.GroupID,
-		wsMessage.Content,
-		wsMessage.ReplyToMessageID,
-		wsMessage.FileName,
-		wsMessage.FilePath,
-		wsMessage.FileType,
-		wsMessage.FileSize,
-		wsMessage.FileChecksum,
-	)
+	// Convert the WebSocketMessage to JSON
+	msgBytes, err := json.Marshal(wsMessage)
 	if err != nil {
-		log.Printf("Error sending message: %v", err)
+		log.Printf("Error marshaling message to JSON: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process message"})
+		return
+	}
+	// Publish the message to RabbitMQ
+	err = h.amqpChannel.Publish(
+		"",           // exchange
+		"chat_queue", // routing key (queue name)
+		false,        // mandatory
+		false,        // immediate
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        msgBytes,
+		})
+	if err != nil {
+		log.Printf("Error publishing message to RabbitMQ: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Message sent successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "Message queued for sending"}) // Indicate successful queuing
+
 }
 
 // GetGroupConversation handles retrieving the conversation history for a group.

@@ -15,7 +15,7 @@ import (
 )
 
 // AIUserID is a constant for the AI Assistant's user ID.
-const AIUserID = "00000000-0000-0000-0000-000000000000" // IMPORTANT: Use this constant!
+const AIUserID = "00000000-0000-0000-0000-000000000000"
 
 type ChatService interface {
 	SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) (string, error)
@@ -162,6 +162,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 
 	// ---  BROADCAST USER MESSAGE ---
 	userMsgBytes, _ := json.Marshal(userMsgData)
+	log.Printf("Consumer about to broadcast: %s", string(userMsgBytes))
 	if groupUUID != nil {
 		// Group message:  Broadcast to group members.
 		for userID := range s.hub.Groups[groupID] {
@@ -314,7 +315,7 @@ func (s *chatService) AddReaction(messageID, userID, reaction string) error {
 		return fmt.Errorf("message not found")
 	}
 
-	// Update the reactions.  We're using a map where keys are reactions,
+	// Update the reactions. Using a map where keys are reactions,
 	// and values are arrays of user IDs.
 	var reactions map[string][]string
 	if err := json.Unmarshal(message.Reactions, &reactions); err != nil {

@@ -32,6 +32,7 @@
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import FileUpload from './FileUpload.vue';
+import axios from 'axios'; // Import axios
 
 export default {
   components: {
@@ -108,56 +109,56 @@ export default {
     }
 
 
-    const sendMessage = () => {
-      if (message.value.trim() !== '' || uploadedFile.value) { // Send even if only file
+    const sendMessage = async () => { // Make this function async
+      if (message.value.trim() !== '' || uploadedFile.value) {
         let msg = {};
-        if(props.groupID){
+        if (props.groupID) {
           msg = {
-            type: "new_message",
+            // type: "new_message",  // REMOVE THIS!
             sender_id: currentUser.value.id,
             group_id: props.groupID,
             content: message.value,
             reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
-            // *** Add file information ***
             file_name: uploadedFile.value ? uploadedFile.value.name : null,
             file_path: uploadedFile.value ? uploadedFile.value.path : null,
             file_type: uploadedFile.value ? uploadedFile.value.type : null,
             file_size: uploadedFile.value ? uploadedFile.value.size : null,
-            checksum:  uploadedFile.value ? uploadedFile.value.checksum : null, // Pass checksum
-          }
+            checksum: uploadedFile.value ? uploadedFile.value.checksum : null,
+          };
         } else {
           msg = {
-            type: "new_message",
+            // type: "new_message",  // REMOVE THIS!
             sender_id: currentUser.value.id,
             receiver_id: props.receiverID,
             content: message.value,
             reply_to_message_id: replyingTo.value ? replyingTo.value.id : null,
-            // *** Add file information ***
             file_name: uploadedFile.value ? uploadedFile.value.name : null,
             file_path: uploadedFile.value ? uploadedFile.value.path : null,
             file_type: uploadedFile.value ? uploadedFile.value.type : null,
             file_size: uploadedFile.value ? uploadedFile.value.size : null,
-            checksum: uploadedFile.value ? uploadedFile.value.checksum : null, // Pass checksum
-          }
+            checksum: uploadedFile.value ? uploadedFile.value.checksum : null,
+          };
         }
 
-        // Check if the WebSocket connection exists before sending
-        console.log("Sending message:", msg);
-        if (store.state.ws) {
-          store.state.ws.send(JSON.stringify(msg));
-        } else {
-          console.error("WebSocket connection is not available.");
-          // Consider showing an error message to the user or attempting to reconnect
-        }
+        try {
+          // Send the message via HTTP POST to /messages
+          await axios.post('http://localhost:8080/messages', msg);
+          console.log("Message sent successfully (via HTTP)");
 
-        message.value = '';
-        store.commit('setReplyingTo', null);
-        uploadedFile.value = null; // Clear the file after sending
-        showSuggestions.value = false; // Hide suggestions
+          // Clear input fields after successful send.
+          message.value = '';
+          store.commit('setReplyingTo', null);
+          uploadedFile.value = null;
+          showSuggestions.value = false;
+        } catch (error) {
+          console.error("Error sending message:", error);
+          // Handle errors (e.g., show an error message to the user)
+        }
       }
       if(draftKey.value){
-        localStorage.removeItem(draftKey.value)
+        localStorage.removeItem(draftKey.value);
       }
+
     };
 
     const handleKeyDown = (event) => {

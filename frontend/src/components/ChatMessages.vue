@@ -81,7 +81,7 @@
         </span>
       </div>
     </div>
-    <!-- Full Image Modal (NEW) -->
+    <!-- Full Image Modal -->
     <div v-if="showModal" class="modal-overlay" @click="closeModal">
       <div class="modal-content" @click.stop>
         <img :src="modalImageUrl" alt="Full Image"/>
@@ -381,7 +381,7 @@ export default {
   margin-right: 4px;
 }
 
-/* Modal Styles (NEW) */
+/* Modal Styles */
 .modal-overlay {
   position: fixed;
   top: 0;

@@ -204,7 +204,7 @@ export default {
     onBeforeUnmount(() => {
       if (store.state.ws) {
         store.state.ws.close();
-        store.commit("setWs", null); // VERY IMPORTANT: Reset to null
+        store.commit("setWs", null); // Reset to null
       }
     });
 
@@ -345,6 +345,7 @@ export default {
                   if (data.reply_to_message) {
                     messageObj.reply_to_message = data.reply_to_message;
                   }
+                  console.log("Received new_message via WebSocket:", messageObj); // ADD THIS
 
                   store.dispatch('addMessage', messageObj);
 

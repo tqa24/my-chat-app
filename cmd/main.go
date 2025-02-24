@@ -2,16 +2,19 @@ package main
 
 import (
 	"fmt"
-	"github.com/joho/godotenv"
 	"log"
+	"net/http"
+
 	"my-chat-app/api"
 	"my-chat-app/config"
+	"my-chat-app/consumer"
 	"my-chat-app/repositories"
 	"my-chat-app/services"
 	"my-chat-app/websockets"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
+	"github.com/streadway/amqp"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -31,6 +34,31 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
+	// Connect to RabbitMQ
+	conn, err := amqp.Dial(config.AppConfig.RabbitMQURL)
+	if err != nil {
+		log.Fatal("Failed to connect to RabbitMQ:", err)
+	}
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal("Failed to open a channel:", err)
+	}
+	defer ch.Close()
+
+	// Declare the queue
+	_, err = ch.QueueDeclare(
+		"chat_queue", // name
+		true,         // durable
+		false,        // delete when unused
+		false,        // exclusive
+		false,        // no-wait
+		nil,          // arguments
+	)
+	if err != nil {
+		log.Fatal("Failed to declare a queue:", err)
+	}
 
 	// Initialize repositories
 	userRepo := repositories.NewUserRepository(db)
@@ -49,13 +77,14 @@ func main() {
 
 	// Initialize services
 	authService := services.NewAuthService(userRepo)
-	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub, aiService)
+	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub, aiService) // Inject the hub
 	groupService := services.NewGroupService(groupRepo, userRepo, hub)
 
 	// Initialize handlers
 	authHandler := api.NewAuthHandler(authService, userRepo)
-	chatHandler := api.NewChatHandler(chatService, hub, db)
+	chatHandler := api.NewChatHandler(chatService, hub, db, ch) // Pass the amqp channel
 	groupHandler := api.NewGroupHandler(groupService)
+
 	// Initialize Gin router
 	r := gin.Default()
 	//CORS
@@ -85,6 +114,18 @@ func main() {
 	r.POST("/upload", chatHandler.UploadFile)
 	// *** Serve uploaded files statically ***
 	r.Static("/uploads", "./uploads")
+
+	// --- START CONSUMER ---  VERY IMPORTANT!
+	go func() {
+		consumerService, err := consumer.NewConsumer(config.AppConfig.RabbitMQURL, chatService)
+		if err != nil {
+			log.Fatalf("Failed to create consumer: %v", err)
+		}
+		if err := consumerService.StartConsuming(); err != nil {
+			log.Fatalf("Consumer error: %v", err)
+		}
+
+	}()
 
 	// Start the server
 	log.Printf("Server listening on port %s", config.AppConfig.AppPort)

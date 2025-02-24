@@ -120,7 +120,7 @@ func (h *Hub) Run() {
 								delete(h.Groups, groupID)
 							}
 						}
-						continue // Important: Skip the default broadcast
+						continue // Skip the default broadcast
 						// If not group message, it mean that this message is direct message
 					} else {
 						// Get receiverID from message
