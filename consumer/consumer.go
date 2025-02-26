@@ -12,7 +12,7 @@ import (
 type Consumer struct {
 	conn        *amqp.Connection
 	channel     *amqp.Channel
-	chatService services.ChatService
+	ChatService services.ChatService
 	queueName   string
 }
 
@@ -43,7 +43,7 @@ func NewConsumer(amqpURL string, chatService services.ChatService) (*Consumer, e
 	return &Consumer{
 		conn:        conn,
 		channel:     channel,
-		chatService: chatService,
+		ChatService: chatService,
 		queueName:   "chat_queue",
 	}, nil
 }
@@ -76,7 +76,7 @@ func (c *Consumer) StartConsuming() error {
 			}
 
 			// Now, use the *FULL* SendMessage method, with file info.
-			_, err := c.chatService.SendMessage(
+			_, err := c.ChatService.SendMessage(
 				wsMessage.SenderID,
 				wsMessage.ReceiverID,
 				wsMessage.GroupID,

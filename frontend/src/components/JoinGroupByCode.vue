@@ -32,7 +32,7 @@ export default {
           error.value = "User not logged in.";
           return;
         }
-        const response = await axios.post('http://localhost:8080/groups/join-by-code', {
+        const response = await instance.post('/groups/join-by-code', {
           code: groupCode.value, // Send the code
           user_id: currentUser.id,   // Temporary workaround
         });
@@ -43,6 +43,10 @@ export default {
         error.value = err.response?.data?.error || 'Failed to join group';
       }
     };
+
+    const instance = axios.create({
+      baseURL: '/api', // Set base URL for all axios requests
+    });
 
     return {
       groupCode,

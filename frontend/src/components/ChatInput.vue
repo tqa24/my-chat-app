@@ -52,6 +52,9 @@ export default {
   },
   setup(props) {
     const store = useStore();
+    const instance = axios.create({
+      baseURL: '/api', // Set base URL for all axios requests
+    });
     const message = ref('');
     const currentUser = computed(()=> store.getters.currentUser)
     const replyingTo = computed(() => store.state.replyingTo);
@@ -142,7 +145,7 @@ export default {
 
         try {
           // Send the message via HTTP POST to /messages
-          await axios.post('http://localhost:8080/messages', msg);
+          await instance.post('/messages', msg);
           console.log("Message sent successfully (via HTTP)");
 
           // Clear input fields after successful send.
