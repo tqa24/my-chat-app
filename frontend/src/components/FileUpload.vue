@@ -84,7 +84,7 @@ export default {
       formData.append('checksum', checksum);
 
       try {
-        const response = await axios.post('http://localhost:8080/upload', formData, {
+        const response = await instance.post('/upload', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
@@ -135,6 +135,10 @@ export default {
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
+
+    const instance = axios.create({
+      baseURL: '/api', // Set base URL for all axios requests
+    });
 
     return { fileInput, selectedFile, uploadError, previewUrl, isImage, triggerFileSelect, handleFileChange, removeFile, formatFileSize };
   },

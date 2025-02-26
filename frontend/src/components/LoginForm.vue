@@ -30,9 +30,13 @@ export default {
     const router = useRouter();
     const store = useStore();
 
+    const instance = axios.create({
+      baseURL: '/api', // Set base URL for all axios requests
+    });
+
     const handleSubmit = async () => {
       try {
-        const response = await axios.post('http://localhost:8080/login', {
+        const response = await instance.post('/login', {
           identifier: identifier.value,
           password: password.value,
         });

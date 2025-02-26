@@ -1,6 +1,11 @@
 import { createStore } from 'vuex';
 import axios from 'axios';
 
+// Create an axios instance with the base URL
+const instance = axios.create({
+    baseURL: '/api', // Set the base URL for all requests from the store
+});
+
 export default createStore({
     state: {
         user: null,
@@ -176,11 +181,13 @@ export default createStore({
             commit('setUser', user);
             const token = localStorage.getItem('token');
             if (token) {
-                axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                // Use instance instead of axios
+                instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
             }
         },
         logout({ commit, state }) { // Add state to access ws
-            delete axios.defaults.headers.common['Authorization'];
+            // Use instance instead of axios
+            delete instance.defaults.headers.common['Authorization'];
             commit('setUser', null);
             localStorage.removeItem('token');
 
@@ -226,8 +233,9 @@ export default createStore({
         async fetchGroupMessages({dispatch, state}){
             if(state.selectedGroup && state.selectedGroup.id){
                 try {
-                    const response = await axios.get(
-                        `http://localhost:8080/groups/${state.selectedGroup.id}/messages?page=1&pageSize=20`
+                    // Use instance
+                    const response = await instance.get(
+                        `/groups/${state.selectedGroup.id}/messages?page=1&pageSize=20`
                     );
                     dispatch('setMessages', response.data.messages.reverse());
 
@@ -239,8 +247,9 @@ export default createStore({
         async fetchMessages({dispatch, state}){
             if(state.selectedUser){
                 try {
-                    const response = await axios.get(
-                        `http://localhost:8080/messages?user1=${state.user?.id}&user2=${state.selectedUser?.id}&page=1&pageSize=20`
+                    // Use instance
+                    const response = await instance.get(
+                        `/messages?user1=${state.user?.id}&user2=${state.selectedUser?.id}&page=1&pageSize=20`
                     );
                     dispatch('setMessages', response.data.messages.reverse());
                 } catch (error) {
@@ -259,7 +268,8 @@ export default createStore({
         },
         async fetchGroupMembers({ commit }, groupID) {
             try {
-                const response = await axios.get(`http://localhost:8080/groups/${groupID}/members`);
+                // Use instance
+                const response = await instance.get(`/groups/${groupID}/members`);
                 commit('setGroupMembers', response.data);
             } catch (error) {
                 console.error("Failed to fetch group members:", error);

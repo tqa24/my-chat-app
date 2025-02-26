@@ -1,35 +1,120 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8080:8080"  # Expose your Go application's port
+      - "6060:6060" # Expose expvar port (for Prometheus to scrape)
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_PORT=${DB_PORT}
+      - APP_PORT=${APP_PORT}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - GIN_MODE=release # Set Gin to production mode
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
-      - db
+      - postgres
       - rabbitmq
-    environment:
-      - DB_HOST=db
-      - DB_USER=yourdbuser
-      - DB_PASSWORD=yourdbpassword
-      - DB_NAME=yourdbname
-      - DB_PORT=5432
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
-  db:
-    image: postgres:latest
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: yourdbuser
-      POSTGRES_PASSWORD: yourdbpassword
-      POSTGRES_DB: yourdbname
+      - prometheus # Your app *doesn't* really depend on Prometheus, but it's good to have it here for ordering
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-  rabbitmq:
-    image: rabbitmq:3-management
-    ports:
-      - "5672:5672"  # AMQP port
-      - "15672:15672" # Management UI port
+      - uploads:/root/uploads  # Mount the uploads volume (for persistence *within* the container)
+    restart: unless-stopped
+    networks:
+      - chat-network
+
+  postgres:
+    image: postgres:17-alpine # Use a specific, supported version. Alpine is smaller.
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data  # Persist PostgreSQL data
+    restart: unless-stopped
+    networks:
+      - chat-network
+    # Add resource limits (CRITICAL for your 1GB VPS)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'  # Limit to 30% of a CPU core
+          memory: 256M # Limit to 256MB of RAM
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine # Use the management plugin version (for the web UI)
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER} # Add these to your .env
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI port (access this in your browser)
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq  # Persist RabbitMQ data
+    restart: unless-stopped
+    networks:
+      - chat-network
+    # Add resource limits (CRITICAL)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=3d' #  Keep data for only 1 day (adjust as needed, but keep it short!)
+    ports:
+      - "9090:9090"  # Prometheus UI
+    restart: unless-stopped
+    networks:
+      - chat-network
+    # Add resource limits (Important)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 200M
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"  # Grafana UI
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER} # Add to .env
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    restart: unless-stopped
+    networks:
+      - chat-network
+    # Add resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
+  rabbitmq_data:
+  uploads:  # Named volume for the uploads directory
+  prometheus_data:
+  grafana_data:
+
+networks:
+  chat-network:
+    driver: bridge

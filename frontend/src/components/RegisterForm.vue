@@ -32,9 +32,13 @@ export default {
     const error = ref('');
     const router = useRouter();
 
+    const instance = axios.create({
+      baseURL: '/api', // Set base URL for all axios requests
+    });
+
     const handleSubmit = async () => {
       try {
-        await axios.post('http://localhost:8080/register', {
+        await instance.post('/register', {
           username: username.value,
           email: email.value,
           password: password.value,

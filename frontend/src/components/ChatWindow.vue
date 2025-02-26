@@ -131,6 +131,9 @@ export default {
   },
   setup() {
     const store = useStore();
+    const instance = axios.create({
+      baseURL: '/api', // Set base URL for all axios requests
+    });
     // const ws = ref(null); // No longer needed as a ref here
     const currentUser = computed(() => store.getters.currentUser);
     const selectedUser = ref(null);
@@ -151,7 +154,7 @@ export default {
       try {
         if (!selectedGroup.value || !currentUser.value) return;
 
-        await axios.post(`http://localhost:8080/groups/${selectedGroup.value.id}/leave`, {
+        await instance.post(`/groups/${selectedGroup.value.id}/leave`, {
           user_id: currentUser.value.id
         });
 
@@ -263,7 +266,7 @@ export default {
     };
 
     const fetchAllUsers = async () => {
-      axios.get(`http://localhost:8080/users`).then(res => {
+      instance.get(`/users`).then(res => {
         const users = res.data.map(user => ({
           id: user.id,
           username: user.username,
@@ -277,8 +280,8 @@ export default {
 
     const fetchUserGroups = async () => {
       try {
-        const response = await axios.get(
-            `http://localhost:8080/users/${currentUser.value?.id}/groups`
+        const response = await instance.get(
+            `/users/${currentUser.value?.id}/groups`
         );
         userGroups.value = response.data;
       } catch (error) {
@@ -288,7 +291,7 @@ export default {
 
     const connectWebSocket = () => {
       const ws = new WebSocket(
-          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`
+          `ws://localhost:8080/api/ws?userID=${currentUser.value?.id}`
       );
       store.commit("setWs", ws); // Store the WebSocket instance in Vuex
 
@@ -371,7 +374,7 @@ export default {
                       updatedUsers[userIndex].status = "online";
                       store.dispatch("setUsersOnline", updatedUsers);
                     } else {
-                      axios.get(`http://localhost:8080/profile?userID=${data.user_id}`).then(res => {
+                      instance.get(`/profile?userID=${data.user_id}`).then(res => {
                         const newUser = {id: res.data.id, username: res.data.username, status: 'online'};
                         store.dispatch('setUsersOnline', [...usersOnline.value, newUser]);
                       }).catch(err => console.error("Error fetching user profile", err));
@@ -454,8 +457,8 @@ export default {
     const fetchMessages = async () => {
       if (selectedUser.value) {
         try {
-          const response = await axios.get(
-              `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}&page=${page.value}&pageSize=${pageSize.value}`
+          const response = await instance.get(
+              `/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}&page=${page.value}&pageSize=${pageSize.value}`
           );
           store.commit('addMessages', response.data.messages.reverse());
           hasMore.value = (page.value * pageSize.value) < response.data.total;
@@ -469,8 +472,8 @@ export default {
     const fetchGroupMessages = async () => {
       if (selectedGroup.value && selectedGroup.value.id) {
         try {
-          const response = await axios.get(
-              `http://localhost:8080/groups/${selectedGroup.value.id}/messages?page=${page.value}&pageSize=${pageSize.value}`
+          const response = await instance.get(
+              `/groups/${selectedGroup.value.id}/messages?page=${page.value}&pageSize=${pageSize.value}`
           );
           store.commit('addMessages', response.data.messages.reverse());
           hasMore.value = (page.value * pageSize.value) < response.data.total;
