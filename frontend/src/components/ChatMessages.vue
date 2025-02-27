@@ -303,7 +303,7 @@ export default {
     // Add this method to format the file path for the <img> tag
     const formatFilePath = (filePath) => {
       if (!filePath) return '';
-      return `/api/${filePath}`; // Prepend base URL
+      return `/${filePath}`;
     }
     return {
       currentUser,
