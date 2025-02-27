@@ -34,6 +34,20 @@
           </div>
           <span v-if="copyMessage" class="copy-message">{{ copyMessage }}</span>
         </div>
+        <!-- Add section to display group members -->
+        <div class="group-members">
+          <h3>Members</h3>
+          <ul>
+            <li v-for="member in groupMembers" :key="member.id">
+              {{ member.username }}
+              <span :class="{ 'online-dot': isUserOnline(member.id) }"></span>
+            </li>
+          </ul>
+        </div>
+        <!--Add loading -->
+        <div v-if="loadingMembers" class="loading-members">
+          Loading members...
+        </div>
         <div class="chat-messages" ref="messagesContainer" @scroll="handleScroll">
           <div v-if="loadingMore" class="loading-indicator">Loading...</div>
           <ChatMessages :messages="filteredMessages"/>
@@ -117,6 +131,9 @@ export default {
   },
   setup() {
     const store = useStore();
+    const instance = axios.create({
+      baseURL: '/api', // Set base URL for all axios requests
+    });
     // const ws = ref(null); // No longer needed as a ref here
     const currentUser = computed(() => store.getters.currentUser);
     const selectedUser = ref(null);
@@ -127,6 +144,9 @@ export default {
     const userGroups = ref([]);
     const copyMessage = ref("");
     const showLeaveModal = ref(false);
+    //Get group member from store.
+    const groupMembers = computed(() => store.getters.groupMembers);
+    const loadingMembers = ref(false);
     const confirmLeaveGroup = () => {
       showLeaveModal.value = true;
     };
@@ -134,7 +154,7 @@ export default {
       try {
         if (!selectedGroup.value || !currentUser.value) return;
 
-        await axios.post(`http://localhost:8080/groups/${selectedGroup.value.id}/leave`, {
+        await instance.post(`/groups/${selectedGroup.value.id}/leave`, {
           user_id: currentUser.value.id
         });
 
@@ -187,7 +207,7 @@ export default {
     onBeforeUnmount(() => {
       if (store.state.ws) {
         store.state.ws.close();
-        store.commit("setWs", null); // VERY IMPORTANT: Reset to null
+        store.commit("setWs", null); // Reset to null
       }
     });
 
@@ -246,7 +266,7 @@ export default {
     };
 
     const fetchAllUsers = async () => {
-      axios.get(`http://localhost:8080/users`).then(res => {
+      instance.get(`/users`).then(res => {
         const users = res.data.map(user => ({
           id: user.id,
           username: user.username,
@@ -260,8 +280,8 @@ export default {
 
     const fetchUserGroups = async () => {
       try {
-        const response = await axios.get(
-            `http://localhost:8080/users/${currentUser.value?.id}/groups`
+        const response = await instance.get(
+            `/users/${currentUser.value?.id}/groups`
         );
         userGroups.value = response.data;
       } catch (error) {
@@ -270,8 +290,9 @@ export default {
     };
 
     const connectWebSocket = () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(
-          `ws://localhost:8080/ws?userID=${currentUser.value?.id}`
+          `${protocol}//${window.location.host}/api/ws?userID=${currentUser.value?.id}`
       );
       store.commit("setWs", ws); // Store the WebSocket instance in Vuex
 
@@ -328,6 +349,7 @@ export default {
                   if (data.reply_to_message) {
                     messageObj.reply_to_message = data.reply_to_message;
                   }
+                  console.log("Received new_message via WebSocket:", messageObj); // ADD THIS
 
                   store.dispatch('addMessage', messageObj);
 
@@ -353,7 +375,7 @@ export default {
                       updatedUsers[userIndex].status = "online";
                       store.dispatch("setUsersOnline", updatedUsers);
                     } else {
-                      axios.get(`http://localhost:8080/profile?userID=${data.user_id}`).then(res => {
+                      instance.get(`/profile?userID=${data.user_id}`).then(res => {
                         const newUser = {id: res.data.id, username: res.data.username, status: 'online'};
                         store.dispatch('setUsersOnline', [...usersOnline.value, newUser]);
                       }).catch(err => console.error("Error fetching user profile", err));
@@ -436,8 +458,8 @@ export default {
     const fetchMessages = async () => {
       if (selectedUser.value) {
         try {
-          const response = await axios.get(
-              `http://localhost:8080/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}&page=${page.value}&pageSize=${pageSize.value}`
+          const response = await instance.get(
+              `/messages?user1=${currentUser.value?.id}&user2=${selectedUser.value?.id}&page=${page.value}&pageSize=${pageSize.value}`
           );
           store.commit('addMessages', response.data.messages.reverse());
           hasMore.value = (page.value * pageSize.value) < response.data.total;
@@ -451,8 +473,8 @@ export default {
     const fetchGroupMessages = async () => {
       if (selectedGroup.value && selectedGroup.value.id) {
         try {
-          const response = await axios.get(
-              `http://localhost:8080/groups/${selectedGroup.value.id}/messages?page=${page.value}&pageSize=${pageSize.value}`
+          const response = await instance.get(
+              `/groups/${selectedGroup.value.id}/messages?page=${page.value}&pageSize=${pageSize.value}`
           );
           store.commit('addMessages', response.data.messages.reverse());
           hasMore.value = (page.value * pageSize.value) < response.data.total;
@@ -527,6 +549,30 @@ export default {
           });
     };
 
+    //Add isUserOnline function.
+    const isUserOnline = (userId) => {
+      return store.getters.getUsersOnline.some(user => user.id === userId && user.status === 'online');
+    };
+    // Watch for changes in the selectedGroup
+    watch(
+        () => selectedGroup.value,
+        async (newGroup, oldGroup) => {
+          //If change to another group. Clean old members.
+          if(oldGroup && oldGroup.id){
+            store.dispatch('clearGroupMembers');
+          }
+
+          if (newGroup && newGroup.id) {
+            loadingMembers.value = true; // Set loading to true
+            await store.dispatch("fetchGroupMembers", newGroup.id);
+            loadingMembers.value = false;// Set loading to false
+          } else {
+            store.dispatch("clearGroupMembers");
+          }
+        }, {deep: true}
+    );
+
+
     return {
       currentUser,
       // ws, // No need to return this directly
@@ -551,10 +597,13 @@ export default {
       formatUnreadCount,
       fetchGroupMessages,
       fetchMessages,
+      isUserOnline,
       getUnreadCount: (id) => store.getters.getUnreadCount(id),
       showLeaveModal,
       confirmLeaveGroup,
       leaveGroup,
+      groupMembers,
+      loadingMembers,
     };
   },
 };
@@ -663,7 +712,6 @@ export default {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.8em;
-  transition: background-color 0.2s;
 }
 
 .copy-button:hover {
@@ -783,5 +831,31 @@ export default {
 .modal-buttons .confirm {
   background-color: #dc3545;
   color: white;
+}
+/* Add style  */
+.group-members {
+  margin-top: 10px;
+  padding: 10px;
+  border-top: 1px solid #eee;
+}
+
+.group-members h3 {
+  margin-bottom: 5px;
+}
+
+.group-members ul {
+  list-style: none;
+  padding: 0;
+}
+
+.group-members li {
+  padding: 5px 0;
+  display: flex;
+  align-items: center;
+}
+/* Add loading  */
+.loading-members {
+  font-style: italic;
+  color: gray;
 }
 </style>

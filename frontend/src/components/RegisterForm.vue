@@ -32,12 +32,13 @@ export default {
     const error = ref('');
     const router = useRouter();
 
+    const instance = axios.create({
+      baseURL: '/api', // Set base URL for all axios requests
+    });
+
     const handleSubmit = async () => {
       try {
-        // No trimming needed here anymore (we handle it correctly now)
-
-        await axios.post('http://localhost:8080/register', {
-          // Use the correct keys: username, email, password (all lowercase)
+        await instance.post('/register', {
           username: username.value,
           email: email.value,
           password: password.value,

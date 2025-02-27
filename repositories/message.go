@@ -9,8 +9,8 @@ type MessageRepository interface {
 	Create(message *models.Message) error
 	GetConversation(user1ID, user2ID string, limit, offset int) ([]models.Message, int64, error) // Return messages and total count
 	GetGroupConversation(groupID string, limit, offset int) ([]models.Message, int64, error)     // Return messages and total count
-	GetByID(id string) (*models.Message, error)                                                  // NEW
-	Update(message *models.Message) error                                                        // NEW
+	GetByID(id string) (*models.Message, error)
+	Update(message *models.Message) error
 }
 
 type messageRepository struct {

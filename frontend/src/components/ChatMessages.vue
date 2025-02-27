@@ -32,19 +32,22 @@
             </a>
           </div>
         </div>
-        <div class="message-text">{{ message.content }}</div>
+
+        <!-- USE THE v-markdown DIRECTIVE HERE -->
+        <div class="message-text" v-markdown="message.content"></div>
+
         <!-- Reactions section -->
         <div class="reactions-container">
           <!-- Display existing reactions -->
           <div v-if="message.reactions && Object.keys(message.reactions).length > 0" class="reactions">
-<span v-for="(users, emoji) in message.reactions"
-      :key="emoji"
-      class="reaction"
-      :class="{ 'user-reacted': hasUserReactedWithEmoji(message, emoji) }"
-      :title="getReactionUsers(users)"
-      @click="handleReactionClick(message, emoji)">
-{{ emoji }} {{ users.length }}
-</span>
+            <span v-for="(users, emoji) in message.reactions"
+                  :key="emoji"
+                  class="reaction"
+                  :class="{ 'user-reacted': hasUserReactedWithEmoji(message, emoji) }"
+                  :title="getReactionUsers(users)"
+                  @click="handleReactionClick(message, emoji)">
+            {{ emoji }} {{ users.length }}
+            </span>
           </div>
         </div>
         <!-- Message actions -->
@@ -61,24 +64,24 @@
           <div v-if="showReactionPicker && selectedMessageId === message.id"
                class="reaction-picker"
                v-click-outside="closeReactionPicker">
-<span v-for="emoji in availableReactions"
-      :key="emoji"
-      @click="addReaction(message, emoji)"
-      :class="{ 'selected': hasUserReactedWithEmoji(message, emoji) }"
-      class="emoji-option">
-{{ emoji }}
-</span>
+            <span v-for="emoji in availableReactions"
+                  :key="emoji"
+                  @click="addReaction(message, emoji)"
+                  :class="{ 'selected': hasUserReactedWithEmoji(message, emoji) }"
+                  class="emoji-option">
+            {{ emoji }}
+            </span>
           </div>
         </div>
       </div>
       <div class="message-info">
         <small>{{ formatTime(message.created_at) }}</small>
         <span class="message-status" :class="message.status">
-{{ getStatusIcon(message.status) }}
-</span>
+        {{ getStatusIcon(message.status) }}
+        </span>
       </div>
     </div>
-    <!-- Full Image Modal (NEW) -->
+    <!-- Full Image Modal -->
     <div v-if="showModal" class="modal-overlay" @click="closeModal">
       <div class="modal-content" @click.stop>
         <img :src="modalImageUrl" alt="Full Image"/>
@@ -87,6 +90,7 @@
     </div>
   </div>
 </template>
+
 <script>
 import {ref, computed, onMounted, nextTick, watch} from 'vue';
 import {useStore} from 'vuex';
@@ -98,7 +102,7 @@ export default {
       required: true
     }
   },
-  directives: {
+  directives: {  //Keep click-outside
     'click-outside': {
       mounted(el, binding) {
         el._clickOutside = (event) => {
@@ -122,7 +126,7 @@ export default {
     const messagesContainer = ref(null);
     const currentUser = computed(() => store.state.user);
     const availableReactions = ['👍', '❤️', '😂', '😮', '😢', '😠'];
-// *** NEW: For Full Image Modal ***
+    // For Full Image Modal ***
     const showModal = ref(false);
     const modalImageUrl = ref('');
     const showFullImage = (imageUrl) => {
@@ -133,7 +137,7 @@ export default {
       modalImageUrl.value = '';
       showModal.value = false;
     };
-// Scroll to bottom when new messages arrive
+    // Scroll to bottom when new messages arrive
     watch(() => props.messages, async () => {
       await nextTick();
       scrollToBottom();
@@ -173,19 +177,19 @@ export default {
     };
     const addReaction = async (message, emoji) => {
       try {
-// Remove existing reaction if any
+        // Remove existing reaction if any
         Object.keys(message.reactions || {}).forEach(existingEmoji => {
           if (message.reactions[existingEmoji].includes(currentUser.value.id)) {
             removeReaction(message, existingEmoji);
           }
         });
-// Send reaction to backend via WebSocket
+        // Send reaction to backend via WebSocket
         store.state.ws.send(JSON.stringify({
           type: "reaction",
           message_id: message.id,
           emoji: emoji
         }));
-// Optimistically update UI
+        // Optimistically update UI
         if (!message.reactions) {
           message.reactions = {};
         }
@@ -202,13 +206,13 @@ export default {
     };
     const removeReaction = (message, emoji) => {
       try {
-// Send remove reaction to backend via WebSocket
+        // Send remove reaction to backend via WebSocket
         store.state.ws.send(JSON.stringify({
           type: "remove_reaction",
           message_id: message.id,
           emoji: emoji
         }));
-// Optimistically update UI
+        // Optimistically update UI
         if (message.reactions?.[emoji]) {
           const index = message.reactions[emoji].indexOf(currentUser.value.id);
           if (index > -1) {
@@ -275,20 +279,20 @@ export default {
           return '';
       }
     };
-// *** NEW: Method to get the sender's username ***
+    // Method to get the sender's username ***
     const getSenderUsername = (message) => {
       if (message.sender_username) { //Prioritize
         return message.sender_username
       }
-// Fallback to using usersOnline (less reliable)
+      // Fallback to using usersOnline (less reliable)
       const sender = store.getters.getUserById(message.sender_id);
       return sender ? sender.username : 'Unknown User';
     };
-// *** NEW: Check if a file is an image ***
+    // *** Check if a file is an image ***
     const isImage = (fileType) => {
       return fileType.startsWith('image/');
     };
-// Helper function to format file sizes (same as in FileUpload.vue)
+    // Helper function to format file sizes (same as in FileUpload.vue)
     const formatFileSize = (bytes) => {
       if (bytes === 0) return '0 Bytes';
       const k = 1024;
@@ -296,10 +300,10 @@ export default {
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
-// Add this method to format the file path for the <img> tag
+    // Add this method to format the file path for the <img> tag
     const formatFilePath = (filePath) => {
       if (!filePath) return '';
-      return `http://localhost:8080/${filePath}`; // Prepend base URL
+      return `/api/${filePath}`; // Prepend base URL
     }
     return {
       currentUser,
@@ -334,6 +338,7 @@ export default {
   }
 };
 </script>
+
 <style scoped>
 /* Add style for sender username */
 .message-sender {
@@ -376,7 +381,7 @@ export default {
   margin-right: 4px;
 }
 
-/* Modal Styles (NEW) */
+/* Modal Styles */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -615,5 +620,9 @@ export default {
 .ai-message i {
   margin-right: 8px;
   color: #4a90e2;
+}
+/* Add white space  */
+.message-text {
+  white-space: pre-wrap;
 }
 </style>

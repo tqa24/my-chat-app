@@ -35,7 +35,7 @@ export default {
           error.value = 'User not logged in.'; // Or redirect to login
           return;
         }
-        const response = await axios.post('http://localhost:8080/groups', {
+        const response = await instance.post('/groups', {
           name: groupName.value,
           creator_id: currentUser.id // Send the creator_id
         });
@@ -47,6 +47,10 @@ export default {
         error.value = err.response?.data?.error || 'Failed to create group';
       }
     };
+
+    const instance = axios.create({
+      baseURL: '/api', // Set base URL for all axios requests
+    });
 
     return {
       groupName,

@@ -17,6 +17,7 @@ type GroupRepository interface {
 	Update(group *models.Group) error
 	Delete(id string) error
 	GetByCode(code string) (*models.Group, error)
+	GetMembers(groupID string) ([]*models.User, error)
 }
 
 type groupRepository struct {
@@ -52,7 +53,6 @@ func (r *groupRepository) GetUsers(group *models.Group) ([]*models.User, error) 
 	return users, err
 }
 
-// Correct and final
 func (r *groupRepository) GetGroupsForUser(user *models.User) ([]*models.Group, error) {
 	var groups []*models.Group
 	err := r.db.Model(user).Association("Groups").Find(&groups)
@@ -77,4 +77,14 @@ func (r *groupRepository) GetByCode(code string) (*models.Group, error) {
 	var group models.Group
 	err := r.db.Where("code = ?", code).First(&group).Error
 	return &group, err
+}
+
+// get members from group
+func (r *groupRepository) GetMembers(groupID string) ([]*models.User, error) {
+	var group models.Group
+	err := r.db.Preload("Users").Where("id = ?", groupID).First(&group).Error
+	if err != nil {
+		return nil, err
+	}
+	return group.Users, nil
 }

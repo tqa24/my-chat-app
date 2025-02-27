@@ -49,7 +49,7 @@ type WebSocketMessage struct {
 	ReplyToMessageID string `json:"reply_to_message_id"`
 	Emoji            string `json:"emoji"`
 	Status           string `json:"status"` // Add this for message status
-	// *** NEW: File fields ***
+	// File fields ***
 	FileName     string `json:"file_name"`
 	FilePath     string `json:"file_path"`
 	FileType     string `json:"file_type"`
@@ -85,29 +85,10 @@ func (c *Client) ReadPump(messageSaver MessageSaver) {
 
 		switch wsMessage.Type {
 		case "new_message":
-			// We *only* need to call SendMessage.  AI handling is now *inside* SendMessage.
-			if chatService, ok := messageSaver.(interface {
-				SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) (string, error)
-			}); ok {
-				_, err := chatService.SendMessage( // We don't need the messageID *here* anymore
-					wsMessage.SenderID,
-					wsMessage.ReceiverID,
-					wsMessage.GroupID,
-					wsMessage.Content,
-					wsMessage.ReplyToMessageID,
-					wsMessage.FileName,
-					wsMessage.FilePath,
-					wsMessage.FileType,
-					wsMessage.FileSize,
-					wsMessage.FileChecksum,
-				)
-				if err != nil {
-					log.Printf("Error saving message: %v", err)
-				}
-			} else {
-				log.Printf("Error: messageSaver does not implement SendMessage")
-			}
-			
+			// *DO NOT* call chatService.SendMessage here!
+			// The consumer handles saving and broadcasting.
+			log.Printf("Received new_message via WebSocket.  This should NOT happen now.")
+
 		case "typing": // Handle typing indicator
 			wsMessage.SenderID = c.UserID
 			// Broadcast typing indicator to the recipient

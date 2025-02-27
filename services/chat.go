@@ -14,6 +14,9 @@ import (
 	"gorm.io/datatypes"
 )
 
+// AIUserID is a constant for the AI Assistant's user ID.
+const AIUserID = "00000000-0000-0000-0000-000000000000"
+
 type ChatService interface {
 	SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) (string, error)
 	SendMessageForWebSocket(senderID, receiverID, groupID, content, replyToMessageID string) error
@@ -78,11 +81,19 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 		replyToUUID = &replyID
 	}
 
-	// Check for AI mention *before* saving the original message.
-	isAIMention := strings.Contains(content, "@AI")
+	// --- DIRECT AI MESSAGE HANDLING ---
+	isDirectAIMessage := receiverID == AIUserID
+
 	var aiResponse string
-	if isAIMention {
-		// Call the AI service *before* creating the initial message
+	if isDirectAIMessage {
+		// Immediately process the message with the AI service.
+		aiResponse, err = s.aiService.ProcessMessage(content) // No need for @AI now
+		if err != nil {
+			log.Printf("Error processing AI message: %v", err)
+			aiResponse = "Sorry, I couldn't process your request."
+		}
+	} else if strings.Contains(content, "@AI") {
+		// Check for AI mention *before* saving the original message.
 		aiResponse, err = s.aiService.ProcessMessage(content)
 		if err != nil {
 			log.Printf("Error processing AI message: %v", err)
@@ -90,6 +101,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 			aiResponse = "Sorry, I couldn't process your request."
 		}
 	}
+	// --- END DIRECT AI MESSAGE HANDLING ---
 
 	// Create the user's message (always create this).
 	userMessage := &models.Message{
@@ -148,8 +160,9 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 		userMsgData["receiver_id"] = receiverID
 	}
 
-	// ---  BROADCAST USER MESSAGE (Corrected) ---
+	// ---  BROADCAST USER MESSAGE ---
 	userMsgBytes, _ := json.Marshal(userMsgData)
+	log.Printf("Consumer about to broadcast: %s", string(userMsgBytes))
 	if groupUUID != nil {
 		// Group message:  Broadcast to group members.
 		for userID := range s.hub.Groups[groupID] {
@@ -168,9 +181,9 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 	}
 	// --- END BROADCAST USER MESSAGE ---
 
-	// If it's an AI mention, create *and send* the AI's reply.
-	if isAIMention {
-		aiSenderUUID := uuid.MustParse("00000000-0000-0000-0000-000000000000") // AI's UUID
+	// --- AI RESPONSE HANDLING (Both Direct and Mentions) ---
+	if isDirectAIMessage || strings.Contains(content, "@AI") { // Handle both cases
+		aiSenderUUID := uuid.MustParse(AIUserID) // AI's UUID
 
 		// For direct messages, set receiver to original sender
 		var aiReceiverUUID *uuid.UUID
@@ -185,7 +198,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 		aiMessage := &models.Message{
 			SenderID:         aiSenderUUID, // AI is the sender
 			ReceiverID:       aiReceiverUUID,
-			GroupID:          groupUUID,  // Same group as original message
+			GroupID:          groupUUID,  // Same group as the original message
 			Content:          aiResponse, // The AI's generated response
 			Status:           "sent",
 			ReplyToMessageID: &userMessage.ID, // Reply to the *user's* message
@@ -198,7 +211,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 		// Prepare AI message for broadcast.
 		aiMsgData := map[string]interface{}{
 			"type":                "new_message",
-			"sender_id":           "AI",           // Clearly indicate AI sender
+			"sender_id":           AIUserID,       // Clearly indicate AI sender
 			"sender_username":     "AI_Assistant", // Set sender username for AI
 			"message_id":          aiMessage.ID.String(),
 			"content":             aiResponse,
@@ -217,7 +230,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 			aiMsgData["receiver_id"] = receiverID
 		}
 
-		// --- BROADCAST AI RESPONSE (Corrected) ---
+		// --- BROADCAST AI RESPONSE ---
 		aiMsgBytes, _ := json.Marshal(aiMsgData)
 		if groupUUID != nil {
 			// Group message: send to all group members
@@ -236,11 +249,12 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 			}
 		}
 		// --- END BROADCAST AI RESPONSE ---
-		return aiMessage.ID.String(), nil
+		return aiMessage.ID.String(), nil // Return AI message ID for consistency
 	}
+	// --- END AI RESPONSE HANDLING ---
+
 	return userMessage.ID.String(), nil // Return the original message's ID.
 }
-
 func (s *chatService) GetConversation(user1ID, user2ID string, pageStr, pageSizeStr string) ([]models.Message, int64, error) {
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page < 1 {
@@ -301,7 +315,7 @@ func (s *chatService) AddReaction(messageID, userID, reaction string) error {
 		return fmt.Errorf("message not found")
 	}
 
-	// Update the reactions.  We're using a map where keys are reactions,
+	// Update the reactions. Using a map where keys are reactions,
 	// and values are arrays of user IDs.
 	var reactions map[string][]string
 	if err := json.Unmarshal(message.Reactions, &reactions); err != nil {
