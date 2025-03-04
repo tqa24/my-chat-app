@@ -7,13 +7,13 @@ scrape_configs:
     static_configs:
       - targets: ['app:6060']  # Scrape your Go application's expvar endpoint
 
-  - job_name: 'postgres'
+  - job_name: 'postgres_exporter'
     static_configs:
-      - targets: ['postgres:9187']  # Assuming you use postgres_exporter on the default port
+      - targets: ['postgres_exporter:9187']  # Assuming you use postgres_exporter on the default port
 
-  - job_name: 'rabbitmq'
+  - job_name: 'rabbitmq_exporter'
     static_configs:
-      - targets: ['rabbitmq:9091'] # Assuming use rabbitmq_exporter on the default port.
+      - targets: ['rabbitmq_exporter:9419'] # Assuming use rabbitmq_exporter on the default port.
 
   - job_name: 'prometheus' # You can monitor promethues with itself.
     static_configs:

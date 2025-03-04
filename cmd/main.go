@@ -254,8 +254,7 @@ func main() {
 		}
 	})
 
-	// ... (rest of your main function - NO CHANGES HERE) ...
-	// --- START CONSUMER ---  VERY IMPORTANT!
+	// --- START CONSUMER
 	go func() {
 		consumerService, err := consumer.NewConsumer(config.AppConfig.RabbitMQURL, chatService)
 		if err != nil {
@@ -292,7 +291,6 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+config.AppConfig.AppPort, r))
 }
 
-// ... (rest of your helper functions - NO CHANGES HERE) ...
 // CORSMiddleware handles Cross-Origin Resource Sharing (CORS)
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

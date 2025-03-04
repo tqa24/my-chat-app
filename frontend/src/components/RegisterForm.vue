@@ -16,6 +16,10 @@
       </div>
       <button type="submit" class="submit-button">Register</button>
       <p v-if="error" class="error">{{ error }}</p>
+      <p class="login-link">
+        Already have an account? <router-link to="/login">>> Login</router-link>
+      </p>
+
     </form>
   </div>
 </template>
@@ -100,5 +104,10 @@ input[type="email"] {
 .error {
   color: red;
   margin-top: 10px;
+}
+.login-link {
+  text-align: center;
+  margin-top: 15px;
+  font-size: 0.9em;
 }
 </style>
