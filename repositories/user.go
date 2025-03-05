@@ -17,6 +17,8 @@ type UserRepository interface {
 	Update(user *models.User) error
 	GetUnverifiedWithExpiredOTP() ([]*models.User, error)
 	SoftDelete(user *models.User) error
+	GetByUsernameIncludingDeleted(username string) (*models.User, error)
+	GetByEmailIncludingDeleted(email string) (*models.User, error)
 }
 
 type userRepository struct {
@@ -76,4 +78,17 @@ func (r *userRepository) SoftDelete(user *models.User) error {
 	now := time.Now()
 	user.DeletedAt = &now
 	return r.db.Save(user).Error
+}
+func (r *userRepository) GetByUsernameIncludingDeleted(username string) (*models.User, error) {
+	var user models.User
+	// Don't filter by deleted_at
+	err := r.db.Unscoped().Where("username = ?", username).First(&user).Error
+	return &user, err
+}
+
+func (r *userRepository) GetByEmailIncludingDeleted(email string) (*models.User, error) {
+	var user models.User
+	// Don't filter by deleted_at
+	err := r.db.Unscoped().Where("email = ?", email).First(&user).Error
+	return &user, err
 }
