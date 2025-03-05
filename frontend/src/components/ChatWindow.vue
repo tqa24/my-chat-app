@@ -116,12 +116,11 @@
 </template>
 
 <script>
-// frontend/src/components/ChatWindow.vue
 import ChatMessages from "./ChatMessages.vue";
 import ChatInput from "./ChatInput.vue";
 import {useStore} from "vuex";
-import axios from "axios";
 import {computed, onBeforeUnmount, onMounted, ref, watch} from "vue";
+import api from '../store/api';
 
 export default {
   name: "ChatWindow",
@@ -131,9 +130,7 @@ export default {
   },
   setup() {
     const store = useStore();
-    const instance = axios.create({
-      baseURL: '/api', // Set base URL for all axios requests
-    });
+    const instance = api;
     // const ws = ref(null); // No longer needed as a ref here
     const currentUser = computed(() => store.getters.currentUser);
     const selectedUser = ref(null);
@@ -291,8 +288,15 @@ export default {
 
     const connectWebSocket = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        console.error("No token available for WebSocket connection");
+        return;
+      }
+
       const ws = new WebSocket(
-          `${protocol}//${window.location.host}/api/ws?userID=${currentUser.value?.id}`
+          `${protocol}//${window.location.host}/api/ws?token=${token}`
       );
       store.commit("setWs", ws); // Store the WebSocket instance in Vuex
 

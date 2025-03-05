@@ -29,10 +29,10 @@
 </template>
 
 <script>
-import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 import { ref } from 'vue';
+import api from "@/store/api";
 
 export default {
   setup() {
@@ -45,9 +45,7 @@ export default {
     const resendMessage = ref('');
 
 
-    const instance = axios.create({
-      baseURL: '/api', // Set base URL for all axios requests
-    });
+    const instance = api;
 
     const handleSubmit = async () => {
       try {
@@ -55,8 +53,13 @@ export default {
           identifier: identifier.value,
           password: password.value,
         });
+
         // Store the user and token in Vuex
-        store.dispatch('login', response.data.user);
+        store.dispatch('login', {
+          user: response.data.user,
+          token: response.data.token
+        });
+
         router.push('/'); // Redirect to home page
       } catch (err) {
         // Show resend OTP link if the error is "account not verified"

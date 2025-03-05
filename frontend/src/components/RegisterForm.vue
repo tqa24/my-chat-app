@@ -38,9 +38,9 @@
 </template>
 
 <script>
-import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { ref, computed } from 'vue';
+import api from "@/store/api";
 export default {
   setup() {
     const username = ref('');
@@ -53,9 +53,7 @@ export default {
     const otpError = ref('');
     const emailError = ref('');
 
-    const instance = axios.create({
-      baseURL: '/api', // Set base URL for all axios requests
-    });
+    const instance = api;
 
     const handleSubmit = async () => {
       emailError.value = ""; // Reset email error

@@ -14,6 +14,7 @@ import (
 	"log"
 	"my-chat-app/models"
 	"my-chat-app/services"
+	"my-chat-app/utils"
 	"my-chat-app/websockets"
 	"net/http"
 	"os"
@@ -31,10 +32,11 @@ type ChatHandler struct {
 	hub         *websockets.Hub // Inject the WebSocket hub
 	db          *gorm.DB
 	amqpChannel *amqp.Channel
+	jwtService  services.JWTService
 }
 
-func NewChatHandler(chatService services.ChatService, hub *websockets.Hub, db *gorm.DB, amqpChannel *amqp.Channel) *ChatHandler {
-	return &ChatHandler{chatService, hub, db, amqpChannel}
+func NewChatHandler(chatService services.ChatService, hub *websockets.Hub, db *gorm.DB, amqpChannel *amqp.Channel, jwtService services.JWTService) *ChatHandler {
+	return &ChatHandler{chatService, hub, db, amqpChannel, jwtService}
 }
 
 // GetConversation handles retrieving the conversation history between two users.
@@ -68,20 +70,36 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		// Allow all origins for development.  In production, you *MUST* restrict this.
 		return true
-	},
+	}, // Allow all origins for development
 }
 
 func (h *ChatHandler) WebSocketHandler(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		utils.RespondWithError(c, http.StatusUnauthorized, "Token is required")
+		return
+	}
+
+	// Validate the token
+	jwtToken, err := h.jwtService.ValidateToken(token)
+	if err != nil {
+		utils.RespondWithError(c, http.StatusUnauthorized, "Invalid or expired token")
+		return
+	}
+
+	// Extract user ID from token
+	userID, err := h.jwtService.GetUserIDFromToken(jwtToken)
+	if err != nil {
+		utils.RespondWithError(c, http.StatusUnauthorized, "Failed to extract user information")
+		return
+	}
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	userID := c.Query("userID")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "UserID is required"})
-		return
-	}
+
 	client := &websockets.Client{
 		Hub:    h.hub,
 		Conn:   conn,
@@ -89,8 +107,9 @@ func (h *ChatHandler) WebSocketHandler(c *gin.Context) {
 		UserID: userID,
 	}
 	client.Hub.Register <- client
-	go client.WritePump()                                       // Handle sending messages to the client
-	go client.ReadPump(h.chatService.(websockets.MessageSaver)) // Pass the chatService here and fix.
+
+	go client.WritePump()
+	go client.ReadPump(h.chatService.(websockets.MessageSaver))
 }
 
 // --- File Upload Handler ---

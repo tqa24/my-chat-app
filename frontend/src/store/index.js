@@ -1,14 +1,10 @@
 import { createStore } from 'vuex';
-import axios from 'axios';
-
-// Create an axios instance with the base URL
-const instance = axios.create({
-    baseURL: '/api', // Set the base URL for all requests from the store
-});
+import api from './api';
 
 export default createStore({
     state: {
         user: null,
+        token:null,
         messages: [],
         usersOnline: [],
         typingUsers: [],
@@ -25,6 +21,17 @@ export default createStore({
                 localStorage.setItem('user', JSON.stringify(user));
             } else {
                 localStorage.removeItem('user')
+            }
+        },
+        setToken(state, token) {
+            state.token = token;
+            if(token){
+                localStorage.setItem('token', token);
+                // Set token in axios default headers
+                api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            } else {
+                localStorage.removeItem('token');
+                delete api.defaults.headers.common['Authorization'];
             }
         },
         setMessages(state, messages) {
@@ -177,18 +184,15 @@ export default createStore({
         },
     },
     actions: {
-        login({ commit }, user) {
+        login({ commit }, { user, token }) {
             commit('setUser', user);
-            const token = localStorage.getItem('token');
-            if (token) {
-                // Use instance instead of axios
-                instance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            }
+            commit('setToken', token);
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         },
         logout({ commit, state }) { // Add state to access ws
-            // Use instance instead of axios
-            delete instance.defaults.headers.common['Authorization'];
+            delete api.defaults.headers.common['Authorization'];
             commit('setUser', null);
+            commit('setToken', null);
             localStorage.removeItem('token');
 
             // Close the WebSocket connection on logout
@@ -233,8 +237,7 @@ export default createStore({
         async fetchGroupMessages({dispatch, state}){
             if(state.selectedGroup && state.selectedGroup.id){
                 try {
-                    // Use instance
-                    const response = await instance.get(
+                    const response = await api.get(
                         `/groups/${state.selectedGroup.id}/messages?page=1&pageSize=20`
                     );
                     dispatch('setMessages', response.data.messages.reverse());
@@ -247,8 +250,7 @@ export default createStore({
         async fetchMessages({dispatch, state}){
             if(state.selectedUser){
                 try {
-                    // Use instance
-                    const response = await instance.get(
+                    const response = await api.get(
                         `/messages?user1=${state.user?.id}&user2=${state.selectedUser?.id}&page=1&pageSize=20`
                     );
                     dispatch('setMessages', response.data.messages.reverse());
@@ -269,7 +271,7 @@ export default createStore({
         async fetchGroupMembers({ commit }, groupID) {
             try {
                 // Use instance
-                const response = await instance.get(`/groups/${groupID}/members`);
+                const response = await api.get(`/groups/${groupID}/members`);
                 commit('setGroupMembers', response.data);
             } catch (error) {
                 console.error("Failed to fetch group members:", error);

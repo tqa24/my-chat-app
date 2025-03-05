@@ -25,19 +25,20 @@ const otpRetryResetDuration = 3 * 24 * time.Hour // 3 days
 
 type AuthService interface {
 	RegisterUser(user *models.User) error
-	LoginUser(username, password string) (*models.User, error)
-	LoginUserWithEmail(email, password string) (*models.User, error)
+	LoginUser(username, password string) (*models.User, string, error)
+	LoginUserWithEmail(email, password string) (*models.User, string, error)
 	GetUserProfile(userID string) (*models.User, error)
 	VerifyOTP(email, otp string) error
 	ResendOTP(email string) error
 }
 
 type authService struct {
-	userRepo repositories.UserRepository
+	userRepo   repositories.UserRepository
+	jwtService JWTService
 }
 
-func NewAuthService(userRepo repositories.UserRepository) AuthService {
-	return &authService{userRepo}
+func NewAuthService(userRepo repositories.UserRepository, jwtService JWTService) AuthService {
+	return &authService{userRepo, jwtService}
 }
 
 type mailcheckResponse struct {
@@ -180,18 +181,18 @@ func (s *authService) RegisterUser(user *models.User) error {
 	return s.userRepo.Create(user)
 }
 
-func (s *authService) LoginUser(username, password string) (*models.User, error) {
+func (s *authService) LoginUser(username, password string) (*models.User, string, error) {
 	log.Printf("Login with username %v %v", username, password)
 	user, err := s.userRepo.GetByUsername(username)
 	if err != nil {
 		log.Printf("LoginUser: User not found by username: %s, error: %v", username, err) // Log user not found
-		return nil, errors.New("invalid credentials")
+		return nil, "", errors.New("invalid credentials")
 	}
 
 	// Check if the account is soft deleted
 	if user.DeletedAt != nil {
 		log.Printf("LoginUser: Attempt to login to deleted account: %s", username)
-		return nil, errors.New("account has been deactivated")
+		return nil, "", errors.New("account has been deactivated")
 	}
 
 	log.Printf("LoginUser: User found: %+v", user)
@@ -199,7 +200,7 @@ func (s *authService) LoginUser(username, password string) (*models.User, error)
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	log.Printf("LoginUser: bcrypt.CompareHashAndPassword result: %v", err) // Log bcrypt result
 	if err != nil {
-		return nil, errors.New("invalid credentials")
+		return nil, "", errors.New("invalid credentials")
 	}
 	// Check if the user is verified
 	if !user.IsVerified {
@@ -211,24 +212,30 @@ func (s *authService) LoginUser(username, password string) (*models.User, error)
 			if err := s.userRepo.Update(user); err != nil {
 				log.Printf("Error soft deleting expired account: %v", err)
 			}
-			return nil, errors.New("verification period has expired, please register again")
+			return nil, "", errors.New("verification period has expired, please register again")
 		}
-		return nil, errors.New("account not verified. Please check your email for the OTP")
+		return nil, "", errors.New("account not verified. Please check your email for the OTP")
 	}
-	return user, nil
+	// Generate JWT token
+	token, err := s.jwtService.GenerateToken(user.ID, user.Username)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	return user, token, nil
 }
-func (s *authService) LoginUserWithEmail(email, password string) (*models.User, error) {
+func (s *authService) LoginUserWithEmail(email, password string) (*models.User, string, error) {
 	log.Printf("Login with email %v %v", email, password)
 	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
 		log.Printf("LoginUserWithEmail: User not found by email: %s, error: %v", email, err) // Log user not found
-		return nil, errors.New("invalid credentials")
+		return nil, "", errors.New("invalid credentials")
 	}
 
 	// Check if the account is soft deleted
 	if user.DeletedAt != nil {
 		log.Printf("LoginUserWithEmail: Attempt to login to deleted account: %s", email)
-		return nil, errors.New("account has been deactivated")
+		return nil, "", errors.New("account has been deactivated")
 	}
 
 	log.Printf("LoginUserWithEmail: User found: %+v", user)
@@ -236,7 +243,7 @@ func (s *authService) LoginUserWithEmail(email, password string) (*models.User, 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	log.Printf("LoginUserWithEmail: bcrypt.CompareHashAndPassword result: %v", err) // Log bcrypt result
 	if err != nil {
-		return nil, errors.New("invalid credentials")
+		return nil, "", errors.New("invalid credentials")
 	}
 	// Check if the user is verified
 	if !user.IsVerified {
@@ -248,11 +255,17 @@ func (s *authService) LoginUserWithEmail(email, password string) (*models.User, 
 			if err := s.userRepo.Update(user); err != nil {
 				log.Printf("Error soft deleting expired account: %v", err)
 			}
-			return nil, errors.New("verification period has expired, please register again")
+			return nil, "", errors.New("verification period has expired, please register again")
 		}
-		return nil, errors.New("account not verified. Please check your email for the OTP")
+		return nil, "", errors.New("account not verified. Please check your email for the OTP")
 	}
-	return user, nil
+
+	// Generate JWT token
+	token, err := s.jwtService.GenerateToken(user.ID, user.Username)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to generate token: %w", err)
+	}
+	return user, token, nil
 }
 
 func (s *authService) GetUserProfile(userID string) (*models.User, error) {

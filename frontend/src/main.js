@@ -11,8 +11,14 @@ app.use(store);
 
 // Load user from localStorage if available
 const savedUser = localStorage.getItem('user');
+const savedToken = localStorage.getItem('token');
+
 if (savedUser) {
     store.commit('setUser', JSON.parse(savedUser));
+}
+
+if (savedToken) {
+    store.commit('setToken', savedToken);
 }
 
 const savedUnreadCounts = localStorage.getItem('unreadCounts');

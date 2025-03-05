@@ -17,9 +17,9 @@
 </template>
 
 <script>
-import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { ref } from 'vue';
+import api from "@/store/api";
 
 export default {
   setup() {
@@ -28,9 +28,7 @@ export default {
     const error = ref('');
     const router = useRouter();
 
-    const instance = axios.create({
-      baseURL: '/api',
-    });
+    const instance = api;
 
     const verifyOTP = async () => {
       try {

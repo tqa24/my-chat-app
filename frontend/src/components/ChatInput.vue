@@ -32,7 +32,7 @@
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import FileUpload from './FileUpload.vue';
-import axios from 'axios'; // Import axios
+import api from "@/store/api"; // Import axios
 
 export default {
   components: {
@@ -52,9 +52,7 @@ export default {
   },
   setup(props) {
     const store = useStore();
-    const instance = axios.create({
-      baseURL: '/api', // Set base URL for all axios requests
-    });
+    const instance = api;
     const message = ref('');
     const currentUser = computed(()=> store.getters.currentUser)
     const replyingTo = computed(() => store.state.replyingTo);

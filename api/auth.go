@@ -66,15 +66,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	log.Printf("Login: Trimmed credentials: %+v", credentials) // Log trimmed data
 
 	var user *models.User
+	var token string
 	var err error
 
 	// Check if the identifier is an email
 	if strings.Contains(credentials.Identifier, "@") {
 		log.Println("Login: Attempting login with email")
-		user, err = h.authService.LoginUserWithEmail(credentials.Identifier, credentials.Password)
+		user, token, err = h.authService.LoginUserWithEmail(credentials.Identifier, credentials.Password)
 	} else {
 		log.Println("Login: Attempting login with username")
-		user, err = h.authService.LoginUser(credentials.Identifier, credentials.Password)
+		user, token, err = h.authService.LoginUser(credentials.Identifier, credentials.Password)
 	}
 
 	if err != nil {
@@ -95,7 +96,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	log.Println("Login: Login successful") // Log success
-	c.JSON(http.StatusOK, gin.H{"message": "Login successful", "user": userResponse})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Login successful",
+		"user":    userResponse,
+		"token":   token,
+	})
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
@@ -103,16 +108,26 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 func (h *AuthHandler) Profile(c *gin.Context) {
-	userID := c.Query("userID") // Retrieve user ID from Query
-	if userID == "" {
-		utils.RespondWithError(c, http.StatusBadRequest, "User ID is required")
+	// Get userID from JWT context (set by middleware)
+	userID, exists := c.Get("userID")
+	if !exists {
+		utils.RespondWithError(c, http.StatusUnauthorized, "User not authenticated")
 		return
 	}
-	user, err := h.authService.GetUserProfile(userID)
+
+	// Convert to string if needed
+	userIDStr, ok := userID.(string)
+	if !ok {
+		utils.RespondWithError(c, http.StatusInternalServerError, "Invalid user ID format")
+		return
+	}
+
+	user, err := h.authService.GetUserProfile(userIDStr)
 	if err != nil {
 		utils.RespondWithError(c, http.StatusNotFound, "User not found")
 		return
 	}
+
 	type UserResponse struct {
 		ID       uuid.UUID `json:"id"`
 		Username string    `json:"username"`

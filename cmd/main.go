@@ -190,7 +190,8 @@ func main() {
 	}
 
 	// Initialize services
-	authService := services.NewAuthService(userRepo)
+	jwtService := services.NewJWTService()
+	authService := services.NewAuthService(userRepo, jwtService)
 	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub, aiService) // Inject the hub
 	groupService := services.NewGroupService(groupRepo, userRepo, hub)
 
@@ -200,7 +201,7 @@ func main() {
 
 	// Initialize handlers
 	authHandler := api.NewAuthHandler(authService, userRepo)
-	chatHandler := api.NewChatHandler(chatService, hub, wrappedDB.DB, ch) // Use wrappedDB.DB and Pass the amqp channel
+	chatHandler := api.NewChatHandler(chatService, hub, wrappedDB.DB, ch, jwtService) // Use wrappedDB.DB and Pass the amqp channel
 	groupHandler := api.NewGroupHandler(groupService)
 
 	// Expose Prometheus metrics
@@ -223,39 +224,50 @@ func main() {
 
 	// *** IMPORTANT: Define API routes *BEFORE* serving static files ***
 	apiRoutes := r.Group("/api") // Group your API routes under /api
+
+	// Public routes (no JWT required)
+	apiRoutes.POST("/register", authHandler.Register)
+	apiRoutes.POST("/login", func(c *gin.Context) {
+		loginAttempts.Inc()
+		authHandler.Login(c)
+	})
+	apiRoutes.POST("/verify-otp", authHandler.VerifyOTP)
+	apiRoutes.POST("/resend-otp", authHandler.ResendOTP)
+	apiRoutes.POST("/logout", authHandler.Logout) // Often logout is public as it just clears client-side tokens
+
+	// Protected routes (JWT required)
+	protected := apiRoutes.Group("/")
+	protected.Use(middleware.JWTAuthMiddleware(jwtService))
 	{
-		apiRoutes.POST("/register", authHandler.Register)
-		// Wrap login
-		apiRoutes.POST("/login", func(c *gin.Context) {
-			loginAttempts.Inc()
-			authHandler.Login(c)
-		})
-		apiRoutes.POST("/verify-otp", authHandler.VerifyOTP)
-		apiRoutes.POST("/resend-otp", authHandler.ResendOTP)
-		apiRoutes.POST("/logout", authHandler.Logout)
-		apiRoutes.GET("/profile", authHandler.Profile)
-		apiRoutes.GET("/ws", chatHandler.WebSocketHandler)
-		apiRoutes.GET("/messages", chatHandler.GetConversation) // For get conversation
-		apiRoutes.POST("/messages", func(c *gin.Context) {
+		// User routes
+		protected.GET("/profile", authHandler.Profile)
+		protected.GET("/users", authHandler.GetAllUsers)
+
+		// WebSocket route
+		protected.GET("/ws", chatHandler.WebSocketHandler)
+
+		// Message routes
+		protected.GET("/messages", chatHandler.GetConversation)
+		protected.POST("/messages", func(c *gin.Context) {
 			messagesSent.Inc()
 			chatHandler.SendMessage(c)
 		})
-		apiRoutes.GET("/users", authHandler.GetAllUsers)
-		// Group routes
-		apiRoutes.POST("/groups", groupHandler.CreateGroup)                     // Create a new group
-		apiRoutes.GET("/groups/:id", groupHandler.GetGroup)                     // Get group details
-		apiRoutes.POST("/groups/:id/join", groupHandler.JoinGroup)              // Join a group
-		apiRoutes.POST("/groups/join-by-code", groupHandler.JoinGroupByCode)    // Join group by code
-		apiRoutes.POST("/groups/:id/leave", groupHandler.LeaveGroup)            // Leave a group
-		apiRoutes.GET("/users/:id/groups", groupHandler.ListGroupsForUser)      // List groups for a user
-		apiRoutes.GET("/groups", groupHandler.GetAllGroups)                     // Get all groups
-		apiRoutes.GET("/groups/:id/messages", chatHandler.GetGroupConversation) // For get group conversation
-		apiRoutes.POST("/messages/:id/react", chatHandler.AddReaction)          // Add reaction
-		apiRoutes.DELETE("/messages/:id/react", chatHandler.RemoveReaction)     // Remove reaction
-		apiRoutes.GET("/groups/:id/members", groupHandler.GetGroupMembers)      // Get member from group
-		// *** File Upload Route ***
-		apiRoutes.POST("/upload", chatHandler.UploadFile)
+		protected.POST("/messages/:id/react", chatHandler.AddReaction)
+		protected.DELETE("/messages/:id/react", chatHandler.RemoveReaction)
 
+		// Group routes
+		protected.POST("/groups", groupHandler.CreateGroup)
+		protected.GET("/groups/:id", groupHandler.GetGroup)
+		protected.POST("/groups/:id/join", groupHandler.JoinGroup)
+		protected.POST("/groups/join-by-code", groupHandler.JoinGroupByCode)
+		protected.POST("/groups/:id/leave", groupHandler.LeaveGroup)
+		protected.GET("/users/:id/groups", groupHandler.ListGroupsForUser)
+		protected.GET("/groups", groupHandler.GetAllGroups)
+		protected.GET("/groups/:id/messages", chatHandler.GetGroupConversation)
+		protected.GET("/groups/:id/members", groupHandler.GetGroupMembers)
+
+		// File upload route
+		protected.POST("/upload", chatHandler.UploadFile)
 	}
 
 	// Serve static files from 'frontend/dist', but under a /static prefix
