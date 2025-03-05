@@ -177,7 +177,7 @@ func (h *AuthHandler) ResendOTP(c *gin.Context) {
 	}
 
 	if err := h.authService.ResendOTP(req.Email); err != nil {
-		utils.RespondWithError(c, http.StatusInternalServerError, err.Error())
+		utils.RespondWithError(c, http.StatusTooManyRequests, err.Error())
 		return
 	}
 

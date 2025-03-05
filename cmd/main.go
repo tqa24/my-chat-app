@@ -180,6 +180,10 @@ func main() {
 	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub, aiService) // Inject the hub
 	groupService := services.NewGroupService(groupRepo, userRepo, hub)
 
+	// Initialize and start the cleanup service
+	cleanupService := services.NewCleanupService(userRepo)
+	cleanupService.StartCleanupScheduler(24 * time.Hour) // Run cleanup once a day
+
 	// Initialize handlers
 	authHandler := api.NewAuthHandler(authService, userRepo)
 	chatHandler := api.NewChatHandler(chatService, hub, wrappedDB.DB, ch) // Use wrappedDB.DB and Pass the amqp channel

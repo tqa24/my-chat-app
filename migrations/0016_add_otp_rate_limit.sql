@@ -1,0 +1,3 @@
+ALTER TABLE users
+ADD COLUMN otp_attempts INT DEFAULT 0,
+ADD COLUMN otp_attempts_reset_at TIMESTAMP WITH TIME ZONE;

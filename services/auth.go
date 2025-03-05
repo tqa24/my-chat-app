@@ -20,6 +20,9 @@ import (
 	"gorm.io/gorm"
 )
 
+const maxOTPRetries = 5
+const otpRetryResetDuration = 3 * 24 * time.Hour // 3 days
+
 type AuthService interface {
 	RegisterUser(user *models.User) error
 	LoginUser(username, password string) (*models.User, error)
@@ -118,8 +121,15 @@ func (s *authService) LoginUser(username, password string) (*models.User, error)
 		log.Printf("LoginUser: User not found by username: %s, error: %v", username, err) // Log user not found
 		return nil, errors.New("invalid credentials")
 	}
-	log.Printf("LoginUser: User found: %+v", user)                      // Log the user object
-	log.Printf("LoginUser: Hashed password from DB: %s", user.Password) // Log hashed password
+
+	// Check if the account is soft deleted
+	if user.DeletedAt != nil {
+		log.Printf("LoginUser: Attempt to login to deleted account: %s", username)
+		return nil, errors.New("account has been deactivated")
+	}
+
+	log.Printf("LoginUser: User found: %+v", user)
+	log.Printf("LoginUser: Hashed password from DB: %s", user.Password)
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	log.Printf("LoginUser: bcrypt.CompareHashAndPassword result: %v", err) // Log bcrypt result
 	if err != nil {
@@ -127,6 +137,16 @@ func (s *authService) LoginUser(username, password string) (*models.User, error)
 	}
 	// Check if the user is verified
 	if !user.IsVerified {
+		// Check if OTP is expired
+		if user.OTPExpiry != nil && time.Now().After(*user.OTPExpiry) {
+			// Soft delete the account if OTP is expired
+			now := time.Now()
+			user.DeletedAt = &now
+			if err := s.userRepo.Update(user); err != nil {
+				log.Printf("Error soft deleting expired account: %v", err)
+			}
+			return nil, errors.New("verification period has expired, please register again")
+		}
 		return nil, errors.New("account not verified. Please check your email for the OTP")
 	}
 	return user, nil
@@ -138,8 +158,15 @@ func (s *authService) LoginUserWithEmail(email, password string) (*models.User, 
 		log.Printf("LoginUserWithEmail: User not found by email: %s, error: %v", email, err) // Log user not found
 		return nil, errors.New("invalid credentials")
 	}
-	log.Printf("LoginUserWithEmail: User found: %+v", user)                      // Log the user object
-	log.Printf("LoginUserWithEmail: Hashed password from DB: %s", user.Password) // Log hashed password
+
+	// Check if the account is soft deleted
+	if user.DeletedAt != nil {
+		log.Printf("LoginUserWithEmail: Attempt to login to deleted account: %s", email)
+		return nil, errors.New("account has been deactivated")
+	}
+
+	log.Printf("LoginUserWithEmail: User found: %+v", user)
+	log.Printf("LoginUserWithEmail: Hashed password from DB: %s", user.Password)
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	log.Printf("LoginUserWithEmail: bcrypt.CompareHashAndPassword result: %v", err) // Log bcrypt result
 	if err != nil {
@@ -147,6 +174,16 @@ func (s *authService) LoginUserWithEmail(email, password string) (*models.User, 
 	}
 	// Check if the user is verified
 	if !user.IsVerified {
+		// Check if OTP is expired
+		if user.OTPExpiry != nil && time.Now().After(*user.OTPExpiry) {
+			// Soft delete the account if OTP is expired
+			now := time.Now()
+			user.DeletedAt = &now
+			if err := s.userRepo.Update(user); err != nil {
+				log.Printf("Error soft deleting expired account: %v", err)
+			}
+			return nil, errors.New("verification period has expired, please register again")
+		}
 		return nil, errors.New("account not verified. Please check your email for the OTP")
 	}
 	return user, nil
@@ -235,16 +272,20 @@ func (s *authService) VerifyOTP(email, otp string) error {
 		return errors.New("user not found")
 	}
 
+	// Check if the account is soft deleted
+	if user.DeletedAt != nil {
+		return errors.New("this account has been deactivated, please register again")
+	}
+
 	// Account Expiry Check
 	if !user.IsVerified && user.OTPExpiry != nil && time.Now().After(*user.OTPExpiry) {
 		// Soft Delete
-		user.OTP = "" // Clear
-		user.OTPExpiry = nil
+		now := time.Now()
+		user.DeletedAt = &now
 		if err := s.userRepo.Update(user); err != nil {
 			return fmt.Errorf("failed to soft delete user: %w", err)
 		}
-		return errors.New("OTP has expired")
-
+		return errors.New("OTP has expired, please register again")
 	}
 
 	if user.OTPExpiry == nil || time.Now().After(*user.OTPExpiry) {
@@ -272,23 +313,42 @@ func (s *authService) ResendOTP(email string) error {
 		return errors.New("user not found")
 	}
 
+	// Check if the account is soft deleted
+	if user.DeletedAt != nil {
+		return errors.New("this account has been deactivated, please register again")
+	}
+
 	// Check if the user is *already* verified.  If so, don't resend.
 	if user.IsVerified {
 		return errors.New("account is already verified")
 	}
 
-	// Generate a new OTP and expiry.
+	// --- Rate Limiting Logic ---
+	now := time.Now()
+	if user.OTPAttemptsResetAt != nil && now.After(*user.OTPAttemptsResetAt) {
+		// Reset attempts if the reset time has passed.
+		user.OTPAttempts = 0
+		resetTime := now.Add(otpRetryResetDuration)
+		user.OTPAttemptsResetAt = &resetTime
+	}
+
+	if user.OTPAttempts >= maxOTPRetries {
+		return errors.New("maximum OTP attempts reached. Please try again later")
+	}
+
+	user.OTPAttempts++
+	// --- End Rate Limiting Logic ---
+
 	otp := generateOTP()
-	otpExpiry := time.Now().Add(10 * time.Minute)
+	otpExpiry := now.Add(10 * time.Minute)
 	user.OTP = otp
 	user.OTPExpiry = &otpExpiry
 
-	// Send the new OTP email.
 	if err := s.sendOTPEmail(user.Email, otp); err != nil {
 		log.Printf("Error sending OTP email: %v", err)
+		user.OTPAttempts--
 		return fmt.Errorf("failed to send OTP email: %w", err)
 	}
-
 	// Save the updated user (with new OTP and expiry).
 	return s.userRepo.Update(user)
 }
