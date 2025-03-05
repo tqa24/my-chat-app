@@ -210,6 +210,7 @@ func main() {
 			authHandler.Login(c)
 		})
 		apiRoutes.POST("/verify-otp", authHandler.VerifyOTP)
+		apiRoutes.POST("/resend-otp", authHandler.ResendOTP)
 		apiRoutes.POST("/logout", authHandler.Logout)
 		apiRoutes.GET("/profile", authHandler.Profile)
 		apiRoutes.GET("/ws", chatHandler.WebSocketHandler)

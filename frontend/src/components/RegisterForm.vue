@@ -51,6 +51,7 @@ export default {
     const showOTPForm = ref(false);
     const otp = ref('');
     const otpError = ref('');
+    const emailError = ref('');
 
     const instance = axios.create({
       baseURL: '/api', // Set base URL for all axios requests

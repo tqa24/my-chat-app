@@ -165,3 +165,21 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "OTP verified successfully"})
 }
+
+// ResendOTP handles resending the OTP.
+func (h *AuthHandler) ResendOTP(c *gin.Context) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if err := h.authService.ResendOTP(req.Email); err != nil {
+		utils.RespondWithError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "OTP resent successfully"})
+}

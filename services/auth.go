@@ -26,6 +26,7 @@ type AuthService interface {
 	LoginUserWithEmail(email, password string) (*models.User, error)
 	GetUserProfile(userID string) (*models.User, error)
 	VerifyOTP(email, otp string) error
+	ResendOTP(email string) error
 }
 
 type authService struct {
@@ -126,7 +127,7 @@ func (s *authService) LoginUser(username, password string) (*models.User, error)
 	}
 	// Check if the user is verified
 	if !user.IsVerified {
-		return nil, errors.New("Account not verified. Please check your email for the OTP")
+		return nil, errors.New("account not verified. Please check your email for the OTP")
 	}
 	return user, nil
 }
@@ -146,7 +147,7 @@ func (s *authService) LoginUserWithEmail(email, password string) (*models.User, 
 	}
 	// Check if the user is verified
 	if !user.IsVerified {
-		return nil, errors.New("Account not verified. Please check your email for the OTP")
+		return nil, errors.New("account not verified. Please check your email for the OTP")
 	}
 	return user, nil
 }
@@ -234,7 +235,18 @@ func (s *authService) VerifyOTP(email, otp string) error {
 		return errors.New("user not found")
 	}
 
-	// Check if OTP is expired
+	// Account Expiry Check
+	if !user.IsVerified && user.OTPExpiry != nil && time.Now().After(*user.OTPExpiry) {
+		// Soft Delete
+		user.OTP = "" // Clear
+		user.OTPExpiry = nil
+		if err := s.userRepo.Update(user); err != nil {
+			return fmt.Errorf("failed to soft delete user: %w", err)
+		}
+		return errors.New("OTP has expired")
+
+	}
+
 	if user.OTPExpiry == nil || time.Now().After(*user.OTPExpiry) {
 		return errors.New("OTP has expired")
 	}
@@ -248,4 +260,35 @@ func (s *authService) VerifyOTP(email, otp string) error {
 	user.OTPExpiry = nil
 	user.IsVerified = true         // Set is_verified to true after successful OTP verification
 	return s.userRepo.Update(user) // Save the changes to the user.
+}
+
+// ResendOTP generates and sends a new OTP to the user's email.
+func (s *authService) ResendOTP(email string) error {
+	user, err := s.userRepo.GetByEmail(email)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+	if user == nil {
+		return errors.New("user not found")
+	}
+
+	// Check if the user is *already* verified.  If so, don't resend.
+	if user.IsVerified {
+		return errors.New("account is already verified")
+	}
+
+	// Generate a new OTP and expiry.
+	otp := generateOTP()
+	otpExpiry := time.Now().Add(10 * time.Minute)
+	user.OTP = otp
+	user.OTPExpiry = &otpExpiry
+
+	// Send the new OTP email.
+	if err := s.sendOTPEmail(user.Email, otp); err != nil {
+		log.Printf("Error sending OTP email: %v", err)
+		return fmt.Errorf("failed to send OTP email: %w", err)
+	}
+
+	// Save the updated user (with new OTP and expiry).
+	return s.userRepo.Update(user)
 }

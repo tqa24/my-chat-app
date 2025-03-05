@@ -15,6 +15,15 @@
       <p class="register-link">
         Don't have an account? <router-link to="/register">>> Register</router-link>
       </p>
+      <!-- Add Resend OTP Link -->
+      <p v-if="showResendOTP" class="resend-otp">
+        Didn't receive the OTP? <a href="#" @click.prevent="resendOTP">Resend OTP</a>
+      </p>
+      <!-- Add Already Have OTP Link -->
+      <p v-if="showResendOTP" class="already-have-otp">
+        Already have an OTP? <router-link to="/verify-otp">Verify OTP</router-link>
+      </p>
+      <p v-if="resendMessage" class="resend-message">{{ resendMessage }}</p>
     </form>
   </div>
 </template>
@@ -32,6 +41,9 @@ export default {
     const error = ref('');
     const router = useRouter();
     const store = useStore();
+    const showResendOTP = ref(false); // Add state for showing the resend link
+    const resendMessage = ref('');
+
 
     const instance = axios.create({
       baseURL: '/api', // Set base URL for all axios requests
@@ -47,11 +59,36 @@ export default {
         store.dispatch('login', response.data.user);
         router.push('/'); // Redirect to home page
       } catch (err) {
+        // Show resend OTP link if the error is "account not verified"
+        if (err.response?.data?.error === "account not verified. Please check your email for the OTP") {
+          showResendOTP.value = true;
+        }
         error.value = err.response?.data?.error || 'Login failed';
       }
     };
+    const resendOTP = async () => {
+      try {
+        // We only need email to resend otp
+        let email = "";
+        if(identifier.value.includes("@")){
+          email = identifier.value
+        } else {
+          //Make email from username
+          const user = await instance.get(`/profile?userID=${identifier.value}`)
+          email = user.data.email
+        }
+        // Make API call to /api/resend-otp
+        await instance.post('/resend-otp', { email: email });
+        // Redirect to the OTP verification page on success
+        router.push('/verify-otp');
 
-    return { identifier, password, error, handleSubmit };
+      } catch (err) {
+        // Show appropriate error
+        resendMessage.value = err.response?.data?.error || 'Failed to resend OTP.';
+      }
+    };
+
+    return { identifier, password, error, handleSubmit, showResendOTP, resendOTP, resendMessage }; // Return showResendOTP and resendOTP
   }
 };
 </script>
@@ -106,5 +143,17 @@ input[type="email"] {
   text-align: center;
   margin-top: 15px;
   font-size: 0.9em;
+}
+.resend-otp a {
+  color: #007bff; /* Or any color you prefer */
+  text-decoration: underline;
+  cursor: pointer;
+}
+.resend-message{
+  color: green;
+}
+.already-have-otp a {
+  color: #007bff;
+  text-decoration: underline;
 }
 </style>
