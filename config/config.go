@@ -22,6 +22,7 @@ type Config struct {
 	EmailPassword string
 	EmailFrom     string
 	JWTSecret     string
+	RapidAPIKey   string
 }
 
 var AppConfig Config
@@ -47,7 +48,11 @@ func LoadConfig() {
 		EmailPassword: getEnv("EMAIL_PASSWORD", ""),
 		EmailFrom:     getEnv("EMAIL_FROM", ""),
 		JWTSecret:     getEnv("JWT_SECRET", ""),
+		RapidAPIKey:   getEnv("RAPIDAPI_KEY", ""),
 	}
+	//if AppConfig.RapidAPIKey == "" {
+	//	log.Fatal("RAPIDAPI_KEY environment variable must be set")
+	//}
 }
 
 func getEnv(key, defaultValue string) string {

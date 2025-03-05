@@ -8,16 +8,17 @@ import (
 )
 
 type User struct {
-	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Username  string     `gorm:"unique;not null" json:"username"`
-	Password  string     `gorm:"not null" json:"password"`
-	Email     string     `gorm:"unique;not null" json:"email"`
-	LastSeen  time.Time  `gorm:"type:timestamp with time zone" json:"last_seen"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	OTP       string     `gorm:"type:varchar(6)" json:"-"`
-	OTPExpiry *time.Time `gorm:"type:timestamp with time zone" json:"-"`
-	Groups    []*Group   `gorm:"many2many:user_groups;" json:"groups"`
+	ID         uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Username   string     `gorm:"unique;not null" json:"username"`
+	Password   string     `gorm:"not null" json:"password"`
+	Email      string     `gorm:"unique;not null" json:"email"`
+	LastSeen   time.Time  `gorm:"type:timestamp with time zone" json:"last_seen"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	OTP        string     `gorm:"type:varchar(6)" json:"-"`
+	OTPExpiry  *time.Time `gorm:"type:timestamp with time zone" json:"-"`
+	IsVerified bool       `gorm:"default:false" json:"is_verified"`
+	Groups     []*Group   `gorm:"many2many:user_groups;" json:"groups"`
 }
 
 // BeforeCreate hook to generate UUID for ID

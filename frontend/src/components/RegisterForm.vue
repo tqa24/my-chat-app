@@ -9,14 +9,15 @@
       </div>
       <div class="form-group">
         <label for="email">Email:</label>
-        <input type="email" id="email" v-model="email" @input="checkDisposableEmail" required>
-        <p v-if="isDisposable" class="error">Disposable email addresses are not allowed.</p>
+        <input type="email" id="email" v-model="email" required>
+        <p v-if="emailError" class="error">{{ emailError }}</p>
       </div>
       <div class="form-group">
         <label for="password">Password:</label>
         <input type="password" id="password" v-model="password" required>
       </div>
-      <button type="submit" class="submit-button" :disabled="isDisposable">Register</button> <!-- Disable if disposable -->
+      <!-- Disable the button if the form is invalid -->
+      <button type="submit" class="submit-button" :disabled="!isFormValid">Register</button>
       <p v-if="error" class="error">{{ error }}</p>
       <p class="login-link">
         Already have an account? <router-link to="/login">>> Login</router-link>
@@ -39,7 +40,7 @@
 <script>
 import axios from 'axios';
 import { useRouter } from 'vue-router';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 export default {
   setup() {
     const username = ref('');
@@ -47,8 +48,7 @@ export default {
     const password = ref('');
     const error = ref('');
     const router = useRouter();
-    const isDisposable = ref(false);
-    const showOTPForm = ref(false); // Add state for OTP form
+    const showOTPForm = ref(false);
     const otp = ref('');
     const otpError = ref('');
 
@@ -56,25 +56,12 @@ export default {
       baseURL: '/api', // Set base URL for all axios requests
     });
 
-    const checkDisposableEmail = async () => {
-      // Basic check.
-      const commonDisposableDomains = [
-        "mailinator.com",
-        "guerrillamail.com",
-        "tempmail.com"
-      ]
-      const emailParts = email.value.split('@')
-
-      if (emailParts.length === 2) {
-        isDisposable.value = commonDisposableDomains.includes(emailParts[1])
-      } else {
-        isDisposable.value = false;
-      }
-    };
-
     const handleSubmit = async () => {
-      if (isDisposable.value) {
-        return; // Don't submit if disposable
+      emailError.value = ""; // Reset email error
+      // Validate email format
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
+        emailError.value = "Invalid email format."; // Set error
+        return; // Stop if the format is invalid
       }
       try {
         await instance.post('/register', {
@@ -94,16 +81,33 @@ export default {
       try {
         await instance.post('/verify-otp', {
           email: email.value,
-          otp: otp.value
+          otp: otp.value,
         });
         // If OTP verification is successful, redirect to login.
-        await router.push('/login');
+        router.push('/login');
       } catch (err) {
         otpError.value = err.response?.data?.error || 'OTP verification failed';
       }
     };
 
-    return { username, email, password, error, handleSubmit, isDisposable, checkDisposableEmail,showOTPForm, otp, verifyOTP, otpError };
+    // Computed property for form validity
+    const isFormValid = computed(() => {
+      return username.value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value) && password.value;
+    });
+
+    return {
+      username,
+      email,
+      password,
+      error,
+      handleSubmit,
+      showOTPForm,
+      otp,
+      verifyOTP,
+      otpError,
+      isFormValid,  // Return isFormValid
+      emailError
+    };
   }
 };
 </script>
