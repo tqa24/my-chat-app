@@ -42,8 +42,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	log.Println("Register: User registered successfully") // Log success
-	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully"})
+	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully.  Please check your email for OTP."})
 }
+
 func (h *AuthHandler) Login(c *gin.Context) {
 	log.Println("Login handler called") // Log entry point
 	var credentials struct {
@@ -144,4 +145,23 @@ func (h *AuthHandler) GetAllUsers(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, userResponses)
+}
+
+// VerifyOTP handles OTP verification.
+func (h *AuthHandler) VerifyOTP(c *gin.Context) {
+	var req struct {
+		Email string `json:"email"`
+		OTP   string `json:"otp"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if err := h.authService.VerifyOTP(req.Email, req.OTP); err != nil {
+		utils.RespondWithError(c, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "OTP verified successfully"})
 }

@@ -1,25 +1,37 @@
 <template>
   <div class="form-container">
-    <h2>Register</h2>
-    <form @submit.prevent="handleSubmit">
+    <h2 v-if="!showOTPForm">Register</h2>
+    <h2 v-else>Verify Email</h2>
+    <form @submit.prevent="handleSubmit" v-if="!showOTPForm">
       <div class="form-group">
         <label for="username">Username:</label>
         <input type="text" id="username" v-model="username" required>
       </div>
       <div class="form-group">
         <label for="email">Email:</label>
-        <input type="email" id="email" v-model="email" required>
+        <input type="email" id="email" v-model="email" @input="checkDisposableEmail" required>
+        <p v-if="isDisposable" class="error">Disposable email addresses are not allowed.</p>
       </div>
       <div class="form-group">
         <label for="password">Password:</label>
         <input type="password" id="password" v-model="password" required>
       </div>
-      <button type="submit" class="submit-button">Register</button>
+      <button type="submit" class="submit-button" :disabled="isDisposable">Register</button> <!-- Disable if disposable -->
       <p v-if="error" class="error">{{ error }}</p>
       <p class="login-link">
         Already have an account? <router-link to="/login">>> Login</router-link>
       </p>
 
+    </form>
+
+    <!-- OTP Form -->
+    <form @submit.prevent="verifyOTP" v-else>
+      <div class="form-group">
+        <label for="otp">Enter OTP:</label>
+        <input type="text" id="otp" v-model="otp" required>
+      </div>
+      <button type="submit">Verify OTP</button>
+      <p v-if="otpError" class="error">{{ otpError }}</p>
     </form>
   </div>
 </template>
@@ -35,31 +47,68 @@ export default {
     const password = ref('');
     const error = ref('');
     const router = useRouter();
+    const isDisposable = ref(false);
+    const showOTPForm = ref(false); // Add state for OTP form
+    const otp = ref('');
+    const otpError = ref('');
 
     const instance = axios.create({
       baseURL: '/api', // Set base URL for all axios requests
     });
 
+    const checkDisposableEmail = async () => {
+      // Basic check.
+      const commonDisposableDomains = [
+        "mailinator.com",
+        "guerrillamail.com",
+        "tempmail.com"
+      ]
+      const emailParts = email.value.split('@')
+
+      if (emailParts.length === 2) {
+        isDisposable.value = commonDisposableDomains.includes(emailParts[1])
+      } else {
+        isDisposable.value = false;
+      }
+    };
+
     const handleSubmit = async () => {
+      if (isDisposable.value) {
+        return; // Don't submit if disposable
+      }
       try {
         await instance.post('/register', {
           username: username.value,
           email: email.value,
           password: password.value,
         });
-        router.push('/login');
+        // Show OTP form after successful registration attempt
+        showOTPForm.value = true;
+        error.value = ""; // Clear any previous errors
       } catch (err) {
         error.value = err.response?.data?.error || 'Registration failed';
       }
     };
 
-    return { username, email, password, error, handleSubmit };
+    const verifyOTP = async () => {
+      try {
+        await instance.post('/verify-otp', {
+          email: email.value,
+          otp: otp.value
+        });
+        // If OTP verification is successful, redirect to login.
+        await router.push('/login');
+      } catch (err) {
+        otpError.value = err.response?.data?.error || 'OTP verification failed';
+      }
+    };
+
+    return { username, email, password, error, handleSubmit, isDisposable, checkDisposableEmail,showOTPForm, otp, verifyOTP, otpError };
   }
 };
 </script>
 
 <style scoped>
-/* Styles (no changes needed here) */
 .form-container {
   width: 300px;
   margin: 0 auto;

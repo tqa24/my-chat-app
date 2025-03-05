@@ -17,6 +17,12 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - GIN_MODE=release # Set Gin to production mode
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_FROM=${EMAIL_FROM}
+
     depends_on:
       - postgres
       - rabbitmq
@@ -126,8 +132,9 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
     environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER} # Add to .env
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     restart: unless-stopped
     networks:
