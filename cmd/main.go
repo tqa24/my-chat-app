@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"my-chat-app/middleware"
 	"net/http"
 	"strings"
 	"time"
@@ -83,6 +84,19 @@ var (
 		},
 		[]string{"query"}, // Label for the type of query (e.g., "get_conversation", "create_message")
 	)
+
+	messageRetryCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "chat_app_message_retry_count",
+			Help: "Number of message retry attempts.",
+		},
+		[]string{"retry_number"}, // Label for retry attempt number
+	)
+
+	deadLetterMessages = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "chat_app_dead_letter_messages_total",
+		Help: "Total number of messages sent to dead letter queue.",
+	})
 )
 
 // Gin middleware for HTTP request metrics
@@ -201,6 +215,9 @@ func main() {
 	// Use the Prometheus middleware
 	r.Use(prometheusMiddleware())
 
+	// Use the message size limiter middleware
+	r.Use(middleware.MessageSizeLimiter())
+
 	//CORS
 	r.Use(CORSMiddleware())
 
@@ -261,7 +278,12 @@ func main() {
 
 	// --- START CONSUMER
 	go func() {
-		consumerService, err := consumer.NewConsumer(config.AppConfig.RabbitMQURL, chatService)
+		consumerService, err := consumer.NewConsumer(
+			config.AppConfig.RabbitMQURL,
+			chatService,
+			messageRetryCount,
+			deadLetterMessages,
+		)
 		if err != nil {
 			log.Fatalf("Failed to create consumer: %v", err)
 		}
@@ -271,6 +293,11 @@ func main() {
 			ChatService: consumerService.ChatService,
 		}
 		consumerService.ChatService = wrappedChatService
+
+		// Start processing the dead letter queue
+		if err := consumerService.ProcessDeadLetterQueue(); err != nil {
+			log.Printf("Failed to start DLQ consumer: %v", err)
+		}
 
 		// Monitor messages in queue
 		go func() {

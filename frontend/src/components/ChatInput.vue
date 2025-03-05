@@ -113,6 +113,11 @@ export default {
 
 
     const sendMessage = async () => { // Make this function async
+      const MAX_MESSAGE_SIZE = 8192; // 8KB
+      if (message.value.length > MAX_MESSAGE_SIZE) {
+        alert(`Message is too large. Maximum size is ${MAX_MESSAGE_SIZE} characters.`);
+        return;
+      }
       if (message.value.trim() !== '' || uploadedFile.value) {
         let msg = {};
         if (props.groupID) {

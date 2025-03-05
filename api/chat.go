@@ -236,7 +236,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// Basic validation (remains largely the same)
+	// Basic validation
 	if wsMessage.SenderID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing sender_id"})
 		return
@@ -251,7 +251,16 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// File existence check (remains the same)
+	// Check content size
+	const maxContentSize = 8192 // 8KB
+	if len(wsMessage.Content) > maxContentSize {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+			"error": "Message content exceeds maximum size limit",
+		})
+		return
+	}
+
+	// File existence check
 	if wsMessage.FileName != "" {
 		filePath := filepath.Join(UploadDir, wsMessage.FileName)
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
