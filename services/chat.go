@@ -233,7 +233,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 		if groupUUID != nil {
 			aiMsgData["group_id"] = groupID
 		} else if receiverUUID != nil {
-			aiMsgData["receiver_id"] = receiverID
+			aiMsgData["receiver_id"] = senderID
 		}
 
 		// --- BROADCAST AI RESPONSE ---

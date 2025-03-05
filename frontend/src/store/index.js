@@ -282,7 +282,21 @@ export default createStore({
     },
     getters: {
         currentUser: state => state.user,
-        allMessages: state => state.messages,
+        allMessages: state => {
+            // Make sure to include messages where AI is either sender or receiver
+            return state.messages.filter(message => {
+                const AIUserID = "00000000-0000-0000-0000-000000000000";
+
+                if (state.selectedUser && state.selectedUser.id === AIUserID) {
+                    // When chatting with AI, show messages between current user and AI
+                    return (message.sender_id === state.user?.id && message.receiver_id === AIUserID) ||
+                        (message.sender_id === AIUserID && message.receiver_id === state.user?.id);
+                }
+
+                // Handle other message filtering...
+                return true;
+            });
+        },
         getUsersOnline: state => state.usersOnline,
         typingUsers: state => state.typingUsers,
         getUnreadCount: (state) => (id) => {

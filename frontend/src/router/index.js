@@ -24,13 +24,13 @@ const routes = [
         component: RegisterView,
     },
     {
-        path: '/create-group', // Add this route
+        path: '/create-group',
         name: 'create-group',
-        component: CreateGroup, // Use the component
+        component: CreateGroup,
         meta: { requiresAuth: true }, // Protect this route
     },
     {
-        path: '/join-group', // Add this route for joining by code
+        path: '/join-group',
         name: 'join-group',
         component: JoinGroupByCode,
         meta: { requiresAuth: true },
