@@ -296,7 +296,7 @@ func (s *authService) isDisposableEmail(email string) (bool, error) {
 		return false, fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 	log.Printf("Mail Check result %+v", result)
-	return result.Block || result.Disposable, nil
+	return result.Block || result.Disposable || result.Text == "Suspicious", nil
 }
 
 // generateOTP generates a 6-digit OTP.
