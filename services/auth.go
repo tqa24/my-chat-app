@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/go-mail/mail/v2"
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -61,94 +60,89 @@ func (s *authService) RegisterUser(user *models.User) error {
 	log.Printf("Register info before hash, %+v", user)
 
 	// Check if username already exists (including soft-deleted accounts)
-	existingUser, err := s.userRepo.GetByUsernameIncludingDeleted(user.Username)
+	existingByUsername, err := s.userRepo.GetByUsernameIncludingDeleted(user.Username)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err // Return any error that's NOT ErrRecordNotFound
-	}
-
-	// If user exists but is soft-deleted, allow re-registration by reactivating the account
-	if existingUser != nil && existingUser.ID != uuid.Nil {
-		if existingUser.DeletedAt != nil {
-			// This is a soft-deleted account - we'll reactivate it
-			log.Printf("Reactivating soft-deleted account for username: %s", user.Username)
-
-			// Hash the new password
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-			if err != nil {
-				return err
-			}
-
-			// Update the existing user with new information
-			existingUser.Password = string(hashedPassword)
-			existingUser.DeletedAt = nil // Reactivate by clearing DeletedAt
-			existingUser.IsVerified = false
-
-			// Generate OTP and set expiry for verification
-			otp := generateOTP()
-			otpExpiry := time.Now().Add(10 * time.Minute)
-			existingUser.OTP = otp
-			existingUser.OTPExpiry = &otpExpiry
-
-			// Send OTP email
-			if err := s.sendOTPEmail(existingUser.Email, otp); err != nil {
-				log.Printf("Error sending OTP email: %v", err)
-				return fmt.Errorf("failed to send OTP email: %w", err)
-			}
-
-			// Update the user record
-			return s.userRepo.Update(existingUser)
-		} else {
-			// Account exists and is not soft-deleted
-			return errors.New("username already exists")
-		}
 	}
 
 	// Check if email already exists (including soft-deleted accounts)
-	existingEmail, err := s.userRepo.GetByEmailIncludingDeleted(user.Email)
+	existingByEmail, err := s.userRepo.GetByEmailIncludingDeleted(user.Email)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err // Return any error that's NOT ErrRecordNotFound
 	}
 
-	// If email exists but is soft-deleted, allow re-registration by reactivating the account
-	if existingEmail != nil && existingEmail.ID != uuid.Nil {
-		if existingEmail.DeletedAt != nil {
-			// This is a soft-deleted account - we'll reactivate it
-			log.Printf("Reactivating soft-deleted account for email: %s", user.Email)
-
-			// Hash the new password
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-			if err != nil {
-				return err
-			}
-
-			// Update the existing user with new information
-			existingEmail.Username = user.Username // Allow changing username during reactivation
-			existingEmail.Password = string(hashedPassword)
-			existingEmail.DeletedAt = nil // Reactivate by clearing DeletedAt
-			existingEmail.IsVerified = false
-
-			// Generate OTP and set expiry for verification
-			otp := generateOTP()
-			otpExpiry := time.Now().Add(10 * time.Minute)
-			existingEmail.OTP = otp
-			existingEmail.OTPExpiry = &otpExpiry
-
-			// Send OTP email
-			if err := s.sendOTPEmail(existingEmail.Email, otp); err != nil {
-				log.Printf("Error sending OTP email: %v", err)
-				return fmt.Errorf("failed to send OTP email: %w", err)
-			}
-
-			// Update the user record
-			return s.userRepo.Update(existingEmail)
-		} else {
-			// Account exists and is not soft-deleted
-			return errors.New("email already exists")
+	// Case 1: Both username and email exist (must be the same account to reactivate)
+	if existingByUsername != nil && existingByEmail != nil {
+		// If they're different accounts, that's an error
+		if existingByUsername.ID != existingByEmail.ID {
+			return errors.New("username and email belong to different accounts")
 		}
+
+		// They're the same account - check if it's soft-deleted
+		if existingByUsername.DeletedAt == nil {
+			return errors.New("account already exists and is active")
+		}
+
+		// Reactivate the soft-deleted account
+		return s.reactivateAccount(existingByUsername, user.Password)
 	}
 
-	// Continue with normal registration flow for new users
-	// Use the Mailcheck API to check for disposable email.
+	// Case 2: Only username exists
+	if existingByUsername != nil {
+		if existingByUsername.DeletedAt == nil {
+			return errors.New("username already exists")
+		}
+		// Username exists but with a different email
+		return errors.New("to reactivate your account, please use the same email address previously associated with this username")
+	}
+
+	// Case 3: Only email exists
+	if existingByEmail != nil {
+		if existingByEmail.DeletedAt == nil {
+			return errors.New("email already exists")
+		}
+		// Email exists but with a different username
+		return errors.New("to reactivate your account, please use the same username previously associated with this email address")
+	}
+
+	// Case 4: Neither exists - proceed with new registration
+	return s.createNewAccount(user)
+}
+
+// Helper method to reactivate an account
+func (s *authService) reactivateAccount(existingUser *models.User, newPassword string) error {
+	log.Printf("Reactivating soft-deleted account for user: %s", existingUser.Username)
+
+	// Hash the new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	// Update the existing user
+	existingUser.Password = string(hashedPassword)
+	existingUser.DeletedAt = nil // Reactivate by clearing DeletedAt
+	existingUser.IsVerified = false
+
+	// Generate OTP and set expiry for verification
+	otp := generateOTP()
+	otpExpiry := time.Now().Add(10 * time.Minute)
+	existingUser.OTP = otp
+	existingUser.OTPExpiry = &otpExpiry
+
+	// Send OTP email
+	if err := s.sendOTPEmail(existingUser.Email, otp); err != nil {
+		log.Printf("Error sending OTP email: %v", err)
+		return fmt.Errorf("failed to send OTP email: %w", err)
+	}
+
+	// Update the user record
+	return s.userRepo.Update(existingUser)
+}
+
+// Helper method to create a new account
+func (s *authService) createNewAccount(user *models.User) error {
+	// Check for disposable email
 	isDisposable, err := s.isDisposableEmail(user.Email)
 	if err != nil {
 		log.Printf("Error checking disposable email: %v", err)
@@ -166,9 +160,9 @@ func (s *authService) RegisterUser(user *models.User) error {
 	user.Password = string(hashedPassword)
 	log.Printf("Register info after hash, %+v", user)
 
-	// Generate OTP and set expiry.
+	// Generate OTP and set expiry
 	otp := generateOTP()
-	otpExpiry := time.Now().Add(10 * time.Minute) // OTP expires in 10 minutes.
+	otpExpiry := time.Now().Add(1 * time.Minute) // OTP expires in 10 minutes.
 	user.OTP = otp
 	user.OTPExpiry = &otpExpiry
 

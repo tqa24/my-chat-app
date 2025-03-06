@@ -402,7 +402,7 @@ func (s *chatService) RemoveReaction(messageID, userID, reaction string) error {
 		return fmt.Errorf("invalid user ID: %v", err)
 	}
 
-	message, err := s.messageRepo.GetByID(messageID) // Assuming you have GetByID
+	message, err := s.messageRepo.GetByID(messageID)
 	if err != nil {
 		return err
 	}

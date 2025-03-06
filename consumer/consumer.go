@@ -39,16 +39,6 @@ func NewConsumer(amqpURL string, chatService services.ChatService,
 		return nil, err
 	}
 
-	// First, try to delete the existing queue if it exists
-	// This is necessary because we can't modify the arguments of an existing queue
-	_, err = channel.QueueDelete(
-		"chat_queue", // name
-		false,        // ifUnused (false = delete even if in use)
-		false,        // ifEmpty (false = delete even if not empty)
-		false,        // noWait
-	)
-	// Ignore the error - it might not exist yet
-
 	// Declare the Dead Letter Exchange
 	dlxName := "chat_dlx"
 	err = channel.ExchangeDeclare(
@@ -90,29 +80,48 @@ func NewConsumer(amqpURL string, chatService services.ChatService,
 		return nil, err
 	}
 
-	// Declare the main queue with dead letter configuration
+	// Check if the queue exists with correct properties
+	mainQueueName := "chat_queue"
 	args := amqp.Table{
 		"x-dead-letter-exchange":    dlxName,
 		"x-dead-letter-routing-key": "failed",
 	}
 
-	_, err = channel.QueueDeclare(
-		"chat_queue", // name
-		true,         // durable
-		false,        // delete when unused
-		false,        // exclusive
-		false,        // no-wait
-		args,         // arguments with DLX configuration
+	// Instead of trying to delete and recreate, use a different approach:
+	// 1. Try to declare with passive=true to check if it exists
+	_, err = channel.QueueDeclarePassive(
+		mainQueueName,
+		true,  // durable
+		false, // delete when unused
+		false, // exclusive
+		false, // no-wait
+		nil,   // no args for passive check
 	)
+
 	if err != nil {
-		return nil, err
+		// Queue doesn't exist or can't be accessed - create it
+		_, err = channel.QueueDeclare(
+			mainQueueName, // name
+			true,          // durable
+			false,         // delete when unused
+			false,         // exclusive
+			false,         // no-wait
+			args,          // arguments with DLX configuration
+		)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Queue exists - we can't modify its properties
+		// Log a warning but continue
+		log.Printf("Warning: Using existing chat_queue with its current properties")
 	}
 
 	return &Consumer{
 		conn:             conn,
 		channel:          channel,
 		ChatService:      chatService,
-		queueName:        "chat_queue",
+		queueName:        mainQueueName,
 		dlxName:          dlxName,
 		dlqName:          dlqName,
 		retryMetric:      retryMetric,

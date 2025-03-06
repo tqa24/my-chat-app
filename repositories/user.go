@@ -35,12 +35,12 @@ func (r *userRepository) Create(user *models.User) error {
 
 func (r *userRepository) GetByUsername(username string) (*models.User, error) {
 	var user models.User
-	err := r.db.Where("username = ? AND deleted_at IS NULL", username).First(&user).Error
+	err := r.db.Where("username = ?", username).First(&user).Error
 	return &user, err
 }
 func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 	var user models.User
-	err := r.db.Where("email = ? AND deleted_at IS NULL", email).First(&user).Error
+	err := r.db.Where("email = ?", email).First(&user).Error
 	return &user, err
 }
 
@@ -55,7 +55,7 @@ func (r *userRepository) Update(user *models.User) error {
 }
 func (r *userRepository) GetAll() ([]models.User, error) {
 	var users []models.User
-	err := r.db.Where("deleted_at IS NULL").Find(&users).Error
+	err := r.db.Where("deleted_at IS NULL AND is_verified = true").Find(&users).Error
 	return users, err
 }
 
