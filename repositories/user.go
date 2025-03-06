@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"errors"
 	"log"
 	"my-chat-app/models"
 	"time"
@@ -81,14 +82,24 @@ func (r *userRepository) SoftDelete(user *models.User) error {
 }
 func (r *userRepository) GetByUsernameIncludingDeleted(username string) (*models.User, error) {
 	var user models.User
-	// Don't filter by deleted_at
 	err := r.db.Unscoped().Where("username = ?", username).First(&user).Error
-	return &user, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, gorm.ErrRecordNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
 }
 
 func (r *userRepository) GetByEmailIncludingDeleted(email string) (*models.User, error) {
 	var user models.User
-	// Don't filter by deleted_at
 	err := r.db.Unscoped().Where("email = ?", email).First(&user).Error
-	return &user, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, gorm.ErrRecordNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
 }
