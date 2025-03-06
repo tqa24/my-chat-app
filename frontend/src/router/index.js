@@ -4,6 +4,7 @@ import LoginView from '../views/LoginView.vue';
 import RegisterView from '../views/RegisterView.vue';
 import CreateGroup from '../components/CreateGroup.vue';
 import JoinGroupByCode from '../components/JoinGroupByCode.vue';
+import VerifyOTPForm from '../components/VerifyOTPForm.vue';
 
 const routes = [
     {
@@ -23,17 +24,22 @@ const routes = [
         component: RegisterView,
     },
     {
-        path: '/create-group', // Add this route
+        path: '/create-group',
         name: 'create-group',
-        component: CreateGroup, // Use the component
+        component: CreateGroup,
         meta: { requiresAuth: true }, // Protect this route
     },
     {
-        path: '/join-group', // Add this route for joining by code
+        path: '/join-group',
         name: 'join-group',
         component: JoinGroupByCode,
         meta: { requiresAuth: true },
-    }
+    },
+    {
+        path: '/verify-otp', // Add the new route
+        name: 'verify-otp',
+        component: VerifyOTPForm,
+    },
 ];
 
 const router = createRouter({

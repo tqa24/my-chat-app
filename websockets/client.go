@@ -19,7 +19,7 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 512
+	maxMessageSize = 8192 // 8KB
 )
 
 var (
@@ -48,13 +48,13 @@ type WebSocketMessage struct {
 	MessageID        string `json:"message_id"`
 	ReplyToMessageID string `json:"reply_to_message_id"`
 	Emoji            string `json:"emoji"`
-	Status           string `json:"status"` // Add this for message status
-	// File fields ***
+	Status           string `json:"status"`
+	// File fields
 	FileName     string `json:"file_name"`
 	FilePath     string `json:"file_path"`
 	FileType     string `json:"file_type"`
 	FileSize     int64  `json:"file_size"`
-	FileChecksum string `json:"checksum"` // Add this for file checksum
+	FileChecksum string `json:"checksum"`
 }
 
 // ReadPump pumps messages from the websocket connection to the hub.

@@ -20,9 +20,9 @@
 </template>
 
 <script>
-import axios from 'axios';
 import { ref } from 'vue';
 import { sha256 } from 'js-sha256';
+import api from "@/store/api";
 
 export default {
   emits: ['file-uploaded', 'file-removed'],
@@ -136,9 +136,7 @@ export default {
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
-    const instance = axios.create({
-      baseURL: '/api', // Set base URL for all axios requests
-    });
+    const instance = api;
 
     return { fileInput, selectedFile, uploadError, previewUrl, isImage, triggerFileSelect, handleFileChange, removeFile, formatFileSize };
   },

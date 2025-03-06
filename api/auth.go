@@ -42,8 +42,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	log.Println("Register: User registered successfully") // Log success
-	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully"})
+	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully.  Please check your email for OTP."})
 }
+
 func (h *AuthHandler) Login(c *gin.Context) {
 	log.Println("Login handler called") // Log entry point
 	var credentials struct {
@@ -65,15 +66,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	log.Printf("Login: Trimmed credentials: %+v", credentials) // Log trimmed data
 
 	var user *models.User
+	var token string
 	var err error
 
 	// Check if the identifier is an email
 	if strings.Contains(credentials.Identifier, "@") {
 		log.Println("Login: Attempting login with email")
-		user, err = h.authService.LoginUserWithEmail(credentials.Identifier, credentials.Password)
+		user, token, err = h.authService.LoginUserWithEmail(credentials.Identifier, credentials.Password)
 	} else {
 		log.Println("Login: Attempting login with username")
-		user, err = h.authService.LoginUser(credentials.Identifier, credentials.Password)
+		user, token, err = h.authService.LoginUser(credentials.Identifier, credentials.Password)
 	}
 
 	if err != nil {
@@ -94,7 +96,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	log.Println("Login: Login successful") // Log success
-	c.JSON(http.StatusOK, gin.H{"message": "Login successful", "user": userResponse})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Login successful",
+		"user":    userResponse,
+		"token":   token,
+	})
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
@@ -102,16 +108,26 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 func (h *AuthHandler) Profile(c *gin.Context) {
-	userID := c.Query("userID") // Retrieve user ID from Query
-	if userID == "" {
-		utils.RespondWithError(c, http.StatusBadRequest, "User ID is required")
+	// Get userID from JWT context (set by middleware)
+	userID, exists := c.Get("userID")
+	if !exists {
+		utils.RespondWithError(c, http.StatusUnauthorized, "User not authenticated")
 		return
 	}
-	user, err := h.authService.GetUserProfile(userID)
+
+	// Convert to string if needed
+	userIDStr, ok := userID.(string)
+	if !ok {
+		utils.RespondWithError(c, http.StatusInternalServerError, "Invalid user ID format")
+		return
+	}
+
+	user, err := h.authService.GetUserProfile(userIDStr)
 	if err != nil {
 		utils.RespondWithError(c, http.StatusNotFound, "User not found")
 		return
 	}
+
 	type UserResponse struct {
 		ID       uuid.UUID `json:"id"`
 		Username string    `json:"username"`
@@ -144,4 +160,41 @@ func (h *AuthHandler) GetAllUsers(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, userResponses)
+}
+
+// VerifyOTP handles OTP verification.
+func (h *AuthHandler) VerifyOTP(c *gin.Context) {
+	var req struct {
+		Email string `json:"email"`
+		OTP   string `json:"otp"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if err := h.authService.VerifyOTP(req.Email, req.OTP); err != nil {
+		utils.RespondWithError(c, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "OTP verified successfully"})
+}
+
+// ResendOTP handles resending the OTP.
+func (h *AuthHandler) ResendOTP(c *gin.Context) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RespondWithError(c, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if err := h.authService.ResendOTP(req.Email); err != nil {
+		utils.RespondWithError(c, http.StatusTooManyRequests, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "OTP resent successfully"})
 }

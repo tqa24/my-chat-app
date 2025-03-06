@@ -20,16 +20,16 @@
 </template>
 
 <script>
-import axios from 'axios';
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {useStore} from 'vuex';
+import api from "@/store/api";
 export default {
   name: 'JoinGroup',
   setup() {
     const groupCode = ref('');
     const error = ref('');
-    const router = useRouter();
+    useRouter();
     const store = useStore();
     const joinedGroup = ref(null); // To store group data after joining
     const copyMessage = ref("");
@@ -73,9 +73,7 @@ export default {
       }
     };
 
-    const instance = axios.create({
-      baseURL: '/api', // Set base URL for all axios requests
-    });
+    const instance = api;
 
     return {
       groupCode,
@@ -133,9 +131,5 @@ button:hover {
   padding: 10px;
   border: 1px solid #ddd;
   background-color: #f9f9f9;
-}
-.copy-message {
-  margin-left: 10px;
-  color: green;
 }
 </style>

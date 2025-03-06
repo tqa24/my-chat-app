@@ -46,6 +46,12 @@ func (s *chatService) SendMessageForWebSocket(senderID, receiverID, groupID, con
 }
 
 func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType string, fileSize int64, checksum string) (string, error) {
+	// Check content size
+	const maxContentSize = 8192 // 8KB
+	if len(content) > maxContentSize {
+		return "", fmt.Errorf("message content exceeds maximum size limit")
+	}
+
 	log.Printf("chatService.SendMessage: senderID=%s, receiverID=%s, groupID=%s, content=%s, replyToMessageID=%s, fileName=%s, filePath=%s, fileType=%s, fileSize=%d, checksum=%s",
 		senderID, receiverID, groupID, content, replyToMessageID, fileName, filePath, fileType, fileSize, checksum)
 
@@ -227,7 +233,7 @@ func (s *chatService) SendMessage(senderID, receiverID, groupID, content, replyT
 		if groupUUID != nil {
 			aiMsgData["group_id"] = groupID
 		} else if receiverUUID != nil {
-			aiMsgData["receiver_id"] = receiverID
+			aiMsgData["receiver_id"] = senderID
 		}
 
 		// --- BROADCAST AI RESPONSE ---

@@ -13,10 +13,10 @@
 </template>
 
 <script>
-import axios from 'axios';
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
+import api from "@/store/api";
 
 export default {
   name: 'CreateGroup',
@@ -48,9 +48,7 @@ export default {
       }
     };
 
-    const instance = axios.create({
-      baseURL: '/api', // Set base URL for all axios requests
-    });
+    const instance = api;
 
     return {
       groupName,

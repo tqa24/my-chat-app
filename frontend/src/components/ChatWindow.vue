@@ -116,12 +116,11 @@
 </template>
 
 <script>
-// frontend/src/components/ChatWindow.vue
 import ChatMessages from "./ChatMessages.vue";
 import ChatInput from "./ChatInput.vue";
 import {useStore} from "vuex";
-import axios from "axios";
 import {computed, onBeforeUnmount, onMounted, ref, watch} from "vue";
+import api from '../store/api';
 
 export default {
   name: "ChatWindow",
@@ -131,9 +130,7 @@ export default {
   },
   setup() {
     const store = useStore();
-    const instance = axios.create({
-      baseURL: '/api', // Set base URL for all axios requests
-    });
+    const instance = api;
     // const ws = ref(null); // No longer needed as a ref here
     const currentUser = computed(() => store.getters.currentUser);
     const selectedUser = ref(null);
@@ -291,8 +288,15 @@ export default {
 
     const connectWebSocket = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        console.error("No token available for WebSocket connection");
+        return;
+      }
+
       const ws = new WebSocket(
-          `${protocol}//${window.location.host}/api/ws?userID=${currentUser.value?.id}`
+          `${protocol}//${window.location.host}/api/ws?token=${token}`
       );
       store.commit("setWs", ws); // Store the WebSocket instance in Vuex
 
@@ -328,11 +332,10 @@ export default {
 
               switch (data.type) {
                 case "new_message":
-                  // *** Include sender_username in messageObj ***
                   messageObj = {
                     id: data.message_id,
                     sender_id: data.sender_id,
-                    sender_username: data.sender_username, // Add this line
+                    sender_username: data.sender_username,
                     receiver_id: data.receiver_id,
                     group_id: data.group_id,
                     content: data.content,
@@ -349,7 +352,7 @@ export default {
                   if (data.reply_to_message) {
                     messageObj.reply_to_message = data.reply_to_message;
                   }
-                  console.log("Received new_message via WebSocket:", messageObj); // ADD THIS
+                  console.log("Received new_message via WebSocket:", messageObj);
 
                   store.dispatch('addMessage', messageObj);
 
@@ -518,7 +521,19 @@ export default {
     });
 
     const filteredMessages = computed(() => {
-      if (selectedUser.value) {
+      const AIUserID = "00000000-0000-0000-0000-000000000000";
+
+      if (selectedUser.value && selectedUser.value.id === AIUserID) {
+        // Special handling for AI chat
+        return store.getters.allMessages.filter(
+            (message) =>
+                (message.sender_id === currentUser.value?.id &&
+                    message.receiver_id === AIUserID) ||
+                (message.sender_id === AIUserID &&
+                    message.receiver_id === currentUser.value?.id)
+        );
+      } else if (selectedUser.value) {
+        // Regular user chat
         return store.getters.allMessages.filter(
             (message) =>
                 (message.sender_id === currentUser.value?.id &&
@@ -527,6 +542,7 @@ export default {
                     message.receiver_id === currentUser.value?.id)
         );
       } else if (selectedGroup.value) {
+        // Group chat
         return store.getters.allMessages.filter(
             (message) => message.group_id === selectedGroup.value.id
         );

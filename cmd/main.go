@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"my-chat-app/middleware"
 	"net/http"
 	"strings"
 	"time"
@@ -83,6 +84,19 @@ var (
 		},
 		[]string{"query"}, // Label for the type of query (e.g., "get_conversation", "create_message")
 	)
+
+	messageRetryCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "chat_app_message_retry_count",
+			Help: "Number of message retry attempts.",
+		},
+		[]string{"retry_number"}, // Label for retry attempt number
+	)
+
+	deadLetterMessages = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "chat_app_dead_letter_messages_total",
+		Help: "Total number of messages sent to dead letter queue.",
+	})
 )
 
 // Gin middleware for HTTP request metrics
@@ -176,13 +190,18 @@ func main() {
 	}
 
 	// Initialize services
-	authService := services.NewAuthService(userRepo)
+	jwtService := services.NewJWTService()
+	authService := services.NewAuthService(userRepo, jwtService)
 	chatService := services.NewChatService(messageRepo, groupRepo, userRepo, hub, aiService) // Inject the hub
 	groupService := services.NewGroupService(groupRepo, userRepo, hub)
 
+	// Initialize and start the cleanup service
+	cleanupService := services.NewCleanupService(userRepo)
+	cleanupService.StartCleanupScheduler(24 * time.Hour) // Run cleanup once a day
+
 	// Initialize handlers
 	authHandler := api.NewAuthHandler(authService, userRepo)
-	chatHandler := api.NewChatHandler(chatService, hub, wrappedDB.DB, ch) // Use wrappedDB.DB and Pass the amqp channel
+	chatHandler := api.NewChatHandler(chatService, hub, wrappedDB.DB, ch, jwtService) // Use wrappedDB.DB and Pass the amqp channel
 	groupHandler := api.NewGroupHandler(groupService)
 
 	// Expose Prometheus metrics
@@ -197,43 +216,58 @@ func main() {
 	// Use the Prometheus middleware
 	r.Use(prometheusMiddleware())
 
+	// Use the message size limiter middleware
+	r.Use(middleware.MessageSizeLimiter())
+
 	//CORS
 	r.Use(CORSMiddleware())
 
 	// *** IMPORTANT: Define API routes *BEFORE* serving static files ***
 	apiRoutes := r.Group("/api") // Group your API routes under /api
-	{
-		apiRoutes.POST("/register", authHandler.Register)
-		// Wrap login
-		apiRoutes.POST("/login", func(c *gin.Context) {
-			loginAttempts.Inc()
-			authHandler.Login(c)
-		})
 
-		apiRoutes.POST("/logout", authHandler.Logout)
-		apiRoutes.GET("/profile", authHandler.Profile)
-		apiRoutes.GET("/ws", chatHandler.WebSocketHandler)
-		apiRoutes.GET("/messages", chatHandler.GetConversation) // For get conversation
-		apiRoutes.POST("/messages", func(c *gin.Context) {
+	// Public routes (no JWT required)
+	apiRoutes.POST("/register", authHandler.Register)
+	apiRoutes.POST("/login", func(c *gin.Context) {
+		loginAttempts.Inc()
+		authHandler.Login(c)
+	})
+	apiRoutes.POST("/verify-otp", authHandler.VerifyOTP)
+	apiRoutes.POST("/resend-otp", authHandler.ResendOTP)
+	apiRoutes.POST("/logout", authHandler.Logout) // Often logout is public as it just clears client-side tokens
+
+	// Protected routes (JWT required)
+	protected := apiRoutes.Group("/")
+	protected.Use(middleware.JWTAuthMiddleware(jwtService))
+	{
+		// User routes
+		protected.GET("/profile", authHandler.Profile)
+		protected.GET("/users", authHandler.GetAllUsers)
+
+		// WebSocket route
+		protected.GET("/ws", chatHandler.WebSocketHandler)
+
+		// Message routes
+		protected.GET("/messages", chatHandler.GetConversation)
+		protected.POST("/messages", func(c *gin.Context) {
 			messagesSent.Inc()
 			chatHandler.SendMessage(c)
 		})
-		apiRoutes.GET("/users", authHandler.GetAllUsers)
-		// Group routes
-		apiRoutes.POST("/groups", groupHandler.CreateGroup)                     // Create a new group
-		apiRoutes.GET("/groups/:id", groupHandler.GetGroup)                     // Get group details
-		apiRoutes.POST("/groups/:id/join", groupHandler.JoinGroup)              // Join a group
-		apiRoutes.POST("/groups/join-by-code", groupHandler.JoinGroupByCode)    // Join group by code
-		apiRoutes.POST("/groups/:id/leave", groupHandler.LeaveGroup)            // Leave a group
-		apiRoutes.GET("/users/:id/groups", groupHandler.ListGroupsForUser)      // List groups for a user
-		apiRoutes.GET("/groups", groupHandler.GetAllGroups)                     // Get all groups
-		apiRoutes.GET("/groups/:id/messages", chatHandler.GetGroupConversation) // For get group conversation
-		apiRoutes.POST("/messages/:id/react", chatHandler.AddReaction)          // Add reaction
-		apiRoutes.DELETE("/messages/:id/react", chatHandler.RemoveReaction)     // Remove reaction
-		apiRoutes.GET("/groups/:id/members", groupHandler.GetGroupMembers)      // Get member from group
-		// *** File Upload Route ***
-		apiRoutes.POST("/upload", chatHandler.UploadFile)
+		protected.POST("/messages/:id/react", chatHandler.AddReaction)
+		protected.DELETE("/messages/:id/react", chatHandler.RemoveReaction)
 
+		// Group routes
+		protected.POST("/groups", groupHandler.CreateGroup)
+		protected.GET("/groups/:id", groupHandler.GetGroup)
+		protected.POST("/groups/:id/join", groupHandler.JoinGroup)
+		protected.POST("/groups/join-by-code", groupHandler.JoinGroupByCode)
+		protected.POST("/groups/:id/leave", groupHandler.LeaveGroup)
+		protected.GET("/users/:id/groups", groupHandler.ListGroupsForUser)
+		protected.GET("/groups", groupHandler.GetAllGroups)
+		protected.GET("/groups/:id/messages", chatHandler.GetGroupConversation)
+		protected.GET("/groups/:id/members", groupHandler.GetGroupMembers)
+
+		// File upload route
+		protected.POST("/upload", chatHandler.UploadFile)
 	}
 
 	// Serve static files from 'frontend/dist', but under a /static prefix
@@ -254,10 +288,14 @@ func main() {
 		}
 	})
 
-	// ... (rest of your main function - NO CHANGES HERE) ...
-	// --- START CONSUMER ---  VERY IMPORTANT!
+	// --- START CONSUMER
 	go func() {
-		consumerService, err := consumer.NewConsumer(config.AppConfig.RabbitMQURL, chatService)
+		consumerService, err := consumer.NewConsumer(
+			config.AppConfig.RabbitMQURL,
+			chatService,
+			messageRetryCount,
+			deadLetterMessages,
+		)
 		if err != nil {
 			log.Fatalf("Failed to create consumer: %v", err)
 		}
@@ -267,6 +305,11 @@ func main() {
 			ChatService: consumerService.ChatService,
 		}
 		consumerService.ChatService = wrappedChatService
+
+		// Start processing the dead letter queue
+		if err := consumerService.ProcessDeadLetterQueue(); err != nil {
+			log.Printf("Failed to start DLQ consumer: %v", err)
+		}
 
 		// Monitor messages in queue
 		go func() {
@@ -292,7 +335,6 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+config.AppConfig.AppPort, r))
 }
 
-// ... (rest of your helper functions - NO CHANGES HERE) ...
 // CORSMiddleware handles Cross-Origin Resource Sharing (CORS)
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

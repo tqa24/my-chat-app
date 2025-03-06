@@ -106,7 +106,7 @@ export default {
     'click-outside': {
       mounted(el, binding) {
         el._clickOutside = (event) => {
-          console.log('Click detected:', event); // ADD THIS LINE
+          console.log('Click detected:', event);
           if (!(el === event.target || el.contains(event.target))) {
             binding.value(event);
           }
@@ -151,21 +151,21 @@ export default {
       }
     };
     const closeReactionPicker = () => {
-      console.log('closeReactionPicker called'); // ADD THIS
+      console.log('closeReactionPicker called');
       showReactionPicker.value = false;
       selectedMessageId.value = null;
     };
     const toggleReactionPicker = (message) => {
-      console.log('toggleReactionPicker called with message:', message); // ADD THIS
-      console.log('Current selectedMessageId:', selectedMessageId.value); // ADD THIS
+      console.log('toggleReactionPicker called with message:', message);
+      console.log('Current selectedMessageId:', selectedMessageId.value);
       if (selectedMessageId.value === message.id) {
-        console.log('Closing picker (selectedMessageId matches)'); // ADD THIS
+        console.log('Closing picker (selectedMessageId matches)');
         closeReactionPicker();
       } else {
-        console.log('Opening picker (selectedMessageId does NOT match)'); // ADD THIS
+        console.log('Opening picker (selectedMessageId does NOT match)');
         showReactionPicker.value = true;
         selectedMessageId.value = message.id;
-        console.log('New selectedMessageId:', selectedMessageId.value); // ADD THIS
+        console.log('New selectedMessageId:', selectedMessageId.value);
       }
     };
     const handleReactionClick = (message, emoji) => {
@@ -303,7 +303,7 @@ export default {
     // Add this method to format the file path for the <img> tag
     const formatFilePath = (filePath) => {
       if (!filePath) return '';
-      return `/api/${filePath}`; // Prepend base URL
+      return `/${filePath}`;
     }
     return {
       currentUser,

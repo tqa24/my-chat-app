@@ -32,7 +32,7 @@
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import FileUpload from './FileUpload.vue';
-import axios from 'axios'; // Import axios
+import api from "@/store/api"; // Import axios
 
 export default {
   components: {
@@ -52,9 +52,7 @@ export default {
   },
   setup(props) {
     const store = useStore();
-    const instance = axios.create({
-      baseURL: '/api', // Set base URL for all axios requests
-    });
+    const instance = api;
     const message = ref('');
     const currentUser = computed(()=> store.getters.currentUser)
     const replyingTo = computed(() => store.state.replyingTo);
@@ -113,6 +111,11 @@ export default {
 
 
     const sendMessage = async () => { // Make this function async
+      const MAX_MESSAGE_SIZE = 8192; // 8KB
+      if (message.value.length > MAX_MESSAGE_SIZE) {
+        alert(`Message is too large. Maximum size is ${MAX_MESSAGE_SIZE} characters.`);
+        return;
+      }
       if (message.value.trim() !== '' || uploadedFile.value) {
         let msg = {};
         if (props.groupID) {

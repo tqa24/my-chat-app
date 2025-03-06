@@ -1,0 +1,3 @@
+ALTER TABLE users
+ADD COLUMN otp VARCHAR(6),  --  A 6-digit OTP is common.
+ADD COLUMN otp_expiry TIMESTAMP WITH TIME ZONE;

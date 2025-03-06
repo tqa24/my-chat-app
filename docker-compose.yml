@@ -17,10 +17,16 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - GIN_MODE=release # Set Gin to production mode
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - RAPIDAPI_KEY=${RAPIDAPI_KEY}
+
     depends_on:
       - postgres
       - rabbitmq
-      - prometheus # Your app *doesn't* really depend on Prometheus, but it's good to have it here for ordering
     volumes:
       - uploads:/root/uploads  # Mount the uploads volume (for persistence *within* the container)
     restart: unless-stopped
@@ -107,9 +113,13 @@ services:
     ports:
       - "9090:9090"  # Prometheus UI
     restart: unless-stopped
+    depends_on:
+      - app
+      - rabbitmq_exporter
+      - postgres_exporter
     networks:
       - chat-network
-    # Add resource limits (Important)
+    # Add resource limits
     deploy:
       resources:
         limits:
@@ -123,8 +133,9 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
     environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER} # Add to .env
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     restart: unless-stopped
     networks:
@@ -137,6 +148,44 @@ services:
           memory: 128M
     depends_on:
       - prometheus
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      - postgres
+    networks:
+      - chat-network
+    restart: unless-stopped
+    # Add resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 100M
+
+  rabbitmq_exporter:
+    image: kbudde/rabbitmq-exporter
+    ports:
+      - "9419:9419"
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBIT_URL: "http://rabbitmq:15672"
+      RABBIT_USER: ${RABBITMQ_USER}
+      RABBIT_PASSWORD: ${RABBITMQ_PASSWORD}
+    networks:
+      - chat-network
+    # Add resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 100M
 
 volumes:
   postgres_data:
