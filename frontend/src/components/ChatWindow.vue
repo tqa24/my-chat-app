@@ -93,12 +93,22 @@
       </div>
     </div>
 
-    <!-- Typing indicator (updated for groups)-->
-    <div v-if="typingUsers.length > 0" class="typing-indicator">
-      <span v-for="username in typingUsers" :key="username">{{
-          username
-        }}</span>
-      is typing...
+    <!-- Typing indicator -->
+    <div v-if="typingUsers.length > 0" class="typing-indicator-container">
+      <div class="typing-indicator">
+      <span v-if="typingUsers.length === 1">
+        {{ typingUsers[0] }} is typing
+        <span class="dot-animation"><span>.</span><span>.</span><span>.</span></span>
+      </span>
+        <span v-else-if="typingUsers.length === 2">
+        {{ typingUsers[0] }} and {{ typingUsers[1] }} are typing
+        <span class="dot-animation"><span>.</span><span>.</span><span>.</span></span>
+      </span>
+        <span v-else>
+        {{ typingUsers[0] }} and {{ typingUsers.length - 1 }} others are typing
+        <span class="dot-animation"><span>.</span><span>.</span><span>.</span></span>
+      </span>
+      </div>
     </div>
   </div>
   <!-- Confirmation Modal -->
@@ -873,5 +883,38 @@ export default {
 .loading-members {
   font-style: italic;
   color: gray;
+}
+.typing-indicator-container {
+  padding: 5px 10px;
+  margin-top: -10px;
+  margin-bottom: 5px;
+}
+
+.typing-indicator {
+  font-size: 0.85em;
+  color: #666;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+}
+
+.dot-animation span {
+  animation: typingDots 1.4s infinite;
+  animation-fill-mode: both;
+  margin-left: 2px;
+}
+
+.dot-animation span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot-animation span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typingDots {
+  0% { opacity: 0.2; }
+  20% { opacity: 1; }
+  100% { opacity: 0.2; }
 }
 </style>

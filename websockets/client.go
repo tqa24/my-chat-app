@@ -89,10 +89,41 @@ func (c *Client) ReadPump(messageSaver MessageSaver) {
 			// The consumer handles saving and broadcasting.
 			log.Printf("Received new_message via WebSocket.  This should NOT happen now.")
 
-		case "typing": // Handle typing indicator
+		case "typing":
+			// Only forward typing events to the intended recipient
 			wsMessage.SenderID = c.UserID
-			// Broadcast typing indicator to the recipient
-			c.Hub.Broadcast <- message // Just forward the original message
+
+			// Get sender username to include in the message
+			var senderUsername string
+
+			// Create a new message with the username included
+			typingMsg := map[string]interface{}{
+				"type":            "typing",
+				"sender_id":       c.UserID,
+				"sender_username": senderUsername, // Include sender username
+			}
+
+			if wsMessage.GroupID != "" {
+				typingMsg["group_id"] = wsMessage.GroupID
+				// Only send to group members
+				if members, ok := c.Hub.Groups[wsMessage.GroupID]; ok {
+					for userID := range members {
+						if userID != c.UserID { // Don't send back to sender
+							if client, ok := c.Hub.Clients[userID]; ok {
+								jsonMsg, _ := json.Marshal(typingMsg)
+								client.Send <- jsonMsg
+							}
+						}
+					}
+				}
+			} else if wsMessage.ReceiverID != "" {
+				typingMsg["receiver_id"] = wsMessage.ReceiverID
+				// Only send to the receiver
+				if client, ok := c.Hub.Clients[wsMessage.ReceiverID]; ok {
+					jsonMsg, _ := json.Marshal(typingMsg)
+					client.Send <- jsonMsg
+				}
+			}
 		case "online_status":
 			// Handle user coming online
 			statusMsg := []byte(`{"type": "online_status", "user_id": "` + c.UserID + `"}`)

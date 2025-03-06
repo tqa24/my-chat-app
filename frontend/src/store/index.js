@@ -1,4 +1,4 @@
-import { createStore } from 'vuex';
+import {createStore} from 'vuex';
 import api from './api';
 
 export default createStore({
@@ -8,6 +8,7 @@ export default createStore({
         messages: [],
         usersOnline: [],
         typingUsers: [],
+        typingTimeouts: {},
         ws: null,  // WebSocket instance
         selectedGroup: null,
         unreadCounts: {},
@@ -65,9 +66,16 @@ export default createStore({
             if (!state.typingUsers.includes(username)) {
                 state.typingUsers.push(username);
             }
+
+            // Auto-clear typing indicator after a safety timeout (5 seconds)
+            clearTimeout(state.typingTimeouts[username]);
+            state.typingTimeouts[username] = setTimeout(() => {
+                state.typingUsers = state.typingUsers.filter(user => user !== username);
+            }, 5000);
         },
         removeTypingUser(state, username) {
-            state.typingUsers = state.typingUsers.filter(u => u !== username);
+            state.typingUsers = state.typingUsers.filter(user => user !== username);
+            clearTimeout(state.typingTimeouts[username]);
         },
         clearMessages(state) {
             state.messages = [];
@@ -303,8 +311,7 @@ export default createStore({
         typingUsers: state => state.typingUsers,
         getUnreadCount: (state) => (id) => {
             const stringId = id?.toString();
-            const count = stringId ? (state.unreadCounts[stringId] || 0) : 0;
-            return count;
+            return stringId ? (state.unreadCounts[stringId] || 0) : 0;
         },
         getUserById: (state) => (userId) => {
             return state.usersOnline.find(user => user.id === userId);

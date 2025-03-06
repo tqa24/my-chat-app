@@ -60,6 +60,8 @@ export default {
     const showSuggestions = ref(false);
     const suggestions = ref(['@AI']); // Start with @AI
     const selectedSuggestionIndex = ref(-1); // Track selected suggestion
+    const lastTypingEvent = ref(null);
+    const isTyping = ref(false); // Track typing state
 
     const userIdToName = computed(() => {
       const map = {};
@@ -229,10 +231,35 @@ export default {
       }
     }
 
-
-
     const handleTyping = () => {
       clearTimeout(typingTimeout);
+
+      // Set typing state
+      isTyping.value = true;
+
+      // Add throttling to reduce WebSocket traffic
+      if (!lastTypingEvent.value || (Date.now() - lastTypingEvent.value) > 1000) {
+        lastTypingEvent.value = Date.now();
+
+        if((props.groupID || props.receiverID) && store.state.ws) {
+          let typingMsg = {};
+          if(props.groupID){
+            typingMsg = {
+              type: "typing",
+              sender_id: currentUser.value.id,
+              group_id: props.groupID,
+            }
+          } else {
+            typingMsg = {
+              type: "typing",
+              sender_id: currentUser.value.id,
+              receiver_id: props.receiverID,
+            }
+          }
+
+          store.state.ws.send(JSON.stringify(typingMsg));
+        }
+      }
 
       // Check typing with @
       const cursorPosition = textarea.value.selectionStart;
@@ -258,26 +285,10 @@ export default {
         localStorage.setItem(draftKey.value, message.value)
       }
 
-      if((props.groupID || props.receiverID) && store.state.ws){ // Check ws exists
-        let typingMsg = {};
-        if(props.groupID){
-          typingMsg = {
-            type: "typing",
-            sender_id: currentUser.value.id,
-            group_id: props.groupID,
-          }
-        } else {
-          typingMsg = {
-            type: "typing",
-            sender_id: currentUser.value.id,
-            receiver_id: props.receiverID,
-          }
-        }
-
-        store.state.ws.send(JSON.stringify(typingMsg));
-
         typingTimeout = setTimeout(() => {
           let stopTypingMsg = {};
+          lastTypingEvent.value = null; // Reset last typing event
+          isTyping.value = false; // Reset typing state
 
           if(props.groupID){
             stopTypingMsg = {
@@ -297,9 +308,7 @@ export default {
             store.state.ws.send(JSON.stringify(stopTypingMsg));
           }
         }, 2000);
-      }
     };
-
 
     const cancelReply = () => {
       store.commit('setReplyingTo', null);
@@ -314,12 +323,13 @@ export default {
       userIdToName,
       handleFileUploaded,
       removeFile,
-      handleKeyDown,         // Add the handler
+      handleKeyDown,
       showSuggestions,
       suggestions,
       selectedSuggestionIndex,
       selectSuggestion,
       textarea,
+      isTyping
     };
   }
 };
