@@ -338,7 +338,12 @@ func main() {
 // CORSMiddleware handles Cross-Origin Resource Sharing (CORS)
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*") // Allow all origins - change in production!
+		// In development, allow requests from Vue dev server
+		if gin.Mode() == gin.DebugMode {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:8081")
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*") // Allow all origins - change in production!
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")

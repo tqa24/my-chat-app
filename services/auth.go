@@ -162,7 +162,7 @@ func (s *authService) createNewAccount(user *models.User) error {
 
 	// Generate OTP and set expiry
 	otp := generateOTP()
-	otpExpiry := time.Now().Add(1 * time.Minute) // OTP expires in 10 minutes.
+	otpExpiry := time.Now().Add(10 * time.Minute) // OTP expires in 10 minutes.
 	user.OTP = otp
 	user.OTPExpiry = &otpExpiry
 

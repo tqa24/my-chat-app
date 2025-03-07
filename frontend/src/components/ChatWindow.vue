@@ -298,6 +298,9 @@ export default {
 
     const connectWebSocket = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsHost = process.env.NODE_ENV === 'development'
+          ? 'localhost:8080'
+          : window.location.host;
       const token = localStorage.getItem('token');
 
       if (!token) {
@@ -306,7 +309,7 @@ export default {
       }
 
       const ws = new WebSocket(
-          `${protocol}//${window.location.host}/api/ws?token=${token}`
+          `${protocol}//${wsHost}/api/ws?token=${token}`
       );
       store.commit("setWs", ws); // Store the WebSocket instance in Vuex
 

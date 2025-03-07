@@ -2,8 +2,13 @@ import axios from 'axios';
 import router from '../router/index.js';
 import store from './index.js';
 
+// Create a base URL that works in both development and production
+const baseURL = process.env.NODE_ENV === 'development'
+    ? 'http://localhost:8080/api'  // Development API URL
+    : '/api';                      // Production API URL (relative path)
+
 const api = axios.create({
-    baseURL: '/api',
+    baseURL: baseURL,
 });
 
 // Add a request interceptor
